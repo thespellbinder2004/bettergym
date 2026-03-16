@@ -8,9 +8,10 @@ environment:
   sdk: ^3.6.0
 
 dependencies:
+  shared_preferences: ^2.5.3
   flutter:
     sdk: flutter
-
+  http: ^1.2.1
   camera: ^0.11.0+2
   google_mlkit_pose_detection: ^0.14.0
 
