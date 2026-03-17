@@ -37,7 +37,7 @@ class _PoseCameraPageState extends State<PoseCameraPage>
 
   // Increase this if preview still feels laggy.
   // 100 ms = about 10 pose detections per second.
-  static const int _processIntervalMs = 100;
+  static const int _processIntervalMs = 30;
 
   @override
   void initState() {
