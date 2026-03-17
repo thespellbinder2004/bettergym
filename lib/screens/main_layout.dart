@@ -1,8 +1,12 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
-// We import the colors from main.dart
-import '../main.dart'; 
+import '../main.dart'; // Inherit global colors
+import 'dashboard_page.dart';
+import 'notifications_page.dart';
+import 'profile_page.dart';
+import 'settings_page.dart';
+import 'session_setup_page.dart';
 
 class MainLayout extends StatefulWidget {
   final List<CameraDescription> cameras;
@@ -13,16 +17,21 @@ class MainLayout extends StatefulWidget {
 }
 
 class _MainLayoutState extends State<MainLayout> {
-  // Start on the Dashboard (Index 1) instead of Settings (Index 0)
-  int _currentIndex = 1;
+  int _currentIndex = 1; // Start on the Dashboard tab
 
-  // Placeholder screens until we build the real ones
-  final List<Widget> _pages = [
-    const Center(child: Text('Frame 5: Settings', style: TextStyle(color: Colors.white, fontSize: 20))),
-    const Center(child: Text('Frame 3: Dashboard', style: TextStyle(color: Colors.white, fontSize: 20))),
-    const Center(child: Text('Frame 4: Notifications', style: TextStyle(color: Colors.white, fontSize: 20))),
-    const Center(child: Text('Frame 6: Profile', style: TextStyle(color: Colors.white, fontSize: 20))),
-  ];
+  late final List<Widget> _pages;
+
+  @override
+  void initState() {
+    super.initState();
+    // All four tabs are now fully wired to their respective screens
+    _pages = [
+      const SettingsPage(),
+      const DashboardPage(),
+      const NotificationsPage(),
+      ProfilePage(cameras: widget.cameras),
+    ];
+  }
 
   void _onTabTapped(int index) {
     setState(() {
@@ -40,8 +49,14 @@ class _MainLayoutState extends State<MainLayout> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: mintGreen,
         onPressed: () {
-          // TODO: Push to Frame 7 (Session Setup)
-          debugPrint("FAB Tapped: Opening Session Setup");
+          // Slide up the session setup page
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => SessionSetupPage(cameras: widget.cameras),
+              fullscreenDialog: true, // Makes it slide up from the bottom
+            ),
+          );
         },
         shape: const CircleBorder(),
         child: const Icon(Icons.camera_alt, color: navyBlue, size: 28),
@@ -58,10 +73,23 @@ class _MainLayoutState extends State<MainLayout> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
+              // Tab 0: Settings
               _buildTabItem(icon: Icons.settings, index: 0, label: 'Settings'),
+              
+              // Tab 1: Dashboard
               _buildTabItem(icon: Icons.dashboard, index: 1, label: 'Stats'),
-              const SizedBox(width: 48), // Empty space for the docked FAB
-              _buildTabItem(icon: Icons.notifications, index: 2, label: 'Alerts'),
+              
+              // Empty space for the docked FAB
+              const SizedBox(width: 48), 
+              
+              // Tab 2: Notifications (With Red Warning Dot)
+              Badge(
+                isLabelVisible: true, // Controls the red dot visibility
+                backgroundColor: neonRed,
+                child: _buildTabItem(icon: Icons.notifications, index: 2, label: 'Alerts'),
+              ),
+              
+              // Tab 3: Profile
               _buildTabItem(icon: Icons.person, index: 3, label: 'Profile'),
             ],
           ),
@@ -84,7 +112,11 @@ class _MainLayoutState extends State<MainLayout> {
           const SizedBox(height: 4),
           Text(
             label,
-            style: TextStyle(color: color, fontSize: 10, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal),
+            style: TextStyle(
+              color: color, 
+              fontSize: 10, 
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
           ),
         ],
       ),

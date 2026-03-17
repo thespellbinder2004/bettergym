@@ -130,7 +130,7 @@ class _LoginPageState extends State<LoginPage> {
                   const Icon(Icons.fitness_center, size: 64, color: mintGreen),
                   const SizedBox(height: 16),
                   const Text(
-                    'BetterGym',
+                    'Better-GYM',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 32,
@@ -141,7 +141,7 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'AI-Powered Biomechanical Tracking',
+                    'AI-Powered Workout Assistant',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,
