@@ -65,15 +65,19 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Status'),
+        title: const Text('Statistics'), // Title updated
         centerTitle: false,
         actions: [
           IconButton(
             icon: const Icon(Icons.sync),
             onPressed: () {
-              // TODO: Trigger API fetch to refresh dashboard data
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Syncing biomechanical data...'), backgroundColor: darkSlate),
+                const SnackBar(
+                  content: Text('Syncing biomechanical data...'), 
+                  backgroundColor: darkSlate,
+                  behavior: SnackBarBehavior.floating, // Forces it to float over the UI
+                  margin: EdgeInsets.only(bottom: 80, left: 16, right: 16), // Clears the Bottom Nav Bar
+                ),
               );
             },
           ),
