@@ -1,3 +1,4 @@
+import 'progress_report_page.dart';
 import 'dart:io';
 import 'dart:ui';
 
@@ -165,8 +166,12 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
   }
 
   void _exitSession() {
-    // TODO: Route to Frame 9 (Progress Report). Popping for now to prevent getting stuck.
-    Navigator.pop(context);
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ProgressReportPage(cameras: widget.cameras),
+      ),
+    );
   }
 
   @override
