@@ -8,10 +8,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4 # Updated
       
       - name: Set up Java
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4 # Updated
         with:
           distribution: 'zulu'
           java-version: '17'
@@ -19,7 +19,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.x' # Or your specific version
+          flutter-version: '3.x'
           channel: 'stable'
 
       - name: Get dependencies
@@ -29,7 +29,7 @@ jobs:
         run: flutter build apk --release --no-codesign
 
       - name: Upload APK
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4 # Updated to v4
         with:
           name: app-release
           path: build/app/outputs/flutter-apk/app-release.apk
