@@ -1,18 +1,17 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
-import '../main.dart'; // Inherit global colors
+import '../main.dart'; 
 import 'pose_camera_page.dart';
 
-// --- DATA MODEL (Fixed with immutable IDs) ---
 class WorkoutSet {
-  final String id; // Required for dragging to work properly
+  final String id; 
   String name;
   int target;
   bool isDuration;
 
   WorkoutSet({required this.name, required this.target, required this.isDuration})
-      : id = DateTime.now().microsecondsSinceEpoch.toString(); // Generate unique ID on creation
+      : id = DateTime.now().microsecondsSinceEpoch.toString(); 
 }
 
 class SessionSetupPage extends StatefulWidget {
@@ -59,7 +58,6 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                   Text(existingSet == null ? 'Add Exercise' : 'Edit Exercise', 
                     style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
-                  
                   DropdownButtonFormField<String>(
                     dropdownColor: navyBlue,
                     value: selectedName,
@@ -75,7 +73,6 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                     },
                   ),
                   const SizedBox(height: 16),
-
                   Row(
                     children: [
                       Expanded(
@@ -106,7 +103,6 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                     ],
                   ),
                   const SizedBox(height: 24),
-
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: mintGreen,
@@ -118,7 +114,6 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                       final target = int.tryParse(targetController.text) ?? 10;
                       setState(() {
                         if (existingSet != null && index != null) {
-                          // Keep existing ID, just update properties
                           existingSet.name = selectedName;
                           existingSet.target = target;
                           existingSet.isDuration = isDuration;
@@ -150,17 +145,29 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Session Setup'), // Title updated
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => Navigator.pop(context),
-        ),
+        title: const Text('Session Setup'), 
+        centerTitle: false, // Left aligned
+        leading: null, // Removes default left button
+        automaticallyImplyLeading: false, 
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.pop(context), // Right aligned exit
+          ),
+        ],
       ),
       body: Column(
         children: [
           Expanded(
             child: _routine.isEmpty
-                ? const Center(child: Text('No exercises added. Tap + to build routine.', style: TextStyle(color: Colors.grey)))
+                ? Center(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(foregroundColor: mintGreen, side: const BorderSide(color: mintGreen)),
+                      icon: const Icon(Icons.add),
+                      label: const Text('ADD EXERCISE'),
+                      onPressed: () => _addOrEditExercise(),
+                    ),
+                  )
                 : ReorderableListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: _routine.length,
@@ -171,9 +178,23 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                         _routine.insert(newIndex, item);
                       });
                     },
+                    // Embedded Add Button in the scrolling list
+                    footer: Padding(
+                      padding: const EdgeInsets.only(top: 16.0),
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: mintGreen,
+                          side: const BorderSide(color: mintGreen),
+                          minimumSize: const Size.fromHeight(50),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        icon: const Icon(Icons.add),
+                        label: const Text('ADD EXERCISE'),
+                        onPressed: () => _addOrEditExercise(),
+                      ),
+                    ),
                     itemBuilder: (context, index) {
                       final set = _routine[index];
-                      // Use the unique immutable ID as the Key
                       return Card(
                         key: Key(set.id), 
                         color: darkSlate,
@@ -214,42 +235,24 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
               color: navyBlue,
               border: Border(top: BorderSide(color: mintGreen.withOpacity(0.2))),
             ),
-            child: Column(
-              children: [
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: mintGreen,
-                    side: const BorderSide(color: mintGreen),
-                    minimumSize: const Size.fromHeight(50),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  icon: const Icon(Icons.add),
-                  label: const Text('ADD EXERCISE'),
-                  onPressed: () => _addOrEditExercise(),
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.greenAccent.shade400,
-                    foregroundColor: Colors.black,
-                    minimumSize: const Size.fromHeight(60),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    elevation: 8,
-                  ),
-                  onPressed: _routine.isEmpty ? null : () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => PoseCameraPage(cameras: widget.cameras),
-                      ),
-                    );
-                  },
-                  child: const Text(
-                    'START SESSION',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.5),
-                  ),
-                ),
-              ],
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.greenAccent.shade400,
+                foregroundColor: Colors.black,
+                minimumSize: const Size.fromHeight(60),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 8,
+              ),
+              onPressed: _routine.isEmpty ? null : () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => PoseCameraPage(cameras: widget.cameras)),
+                );
+              },
+              child: const Text(
+                'START SESSION',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+              ),
             ),
           )
         ],

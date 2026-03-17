@@ -1,13 +1,12 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
-import '../main.dart'; // Inherit global colors
+import '../main.dart'; 
 import 'main_layout.dart';
 
 class ProgressReportPage extends StatelessWidget {
   final List<CameraDescription> cameras;
   
-  // In a real scenario, this data would be passed from Frame 8 or fetched from your API
   final int totalScore = 88;
   final int totalDurationMins = 42;
   final int praWarnings = 1;
@@ -61,7 +60,6 @@ class ProgressReportPage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          // Custom Consistency Bar
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
@@ -80,8 +78,8 @@ class ProgressReportPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Session Debrief'),
-        automaticallyImplyLeading: false, // Prevents them from swiping back into the active camera
+        title: const Text('Performance Analysis'), // Updated
+        automaticallyImplyLeading: false, 
       ),
       body: Column(
         children: [
@@ -89,7 +87,6 @@ class ProgressReportPage extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                // --- HERO SCORE SECTION ---
                 Center(
                   child: Stack(
                     alignment: Alignment.center,
@@ -114,8 +111,6 @@ class ProgressReportPage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 32),
-
-                // --- HIGH LEVEL STATS ---
                 Row(
                   children: [
                     Expanded(child: _buildStatCard('DURATION', '${totalDurationMins}m', Colors.white)),
@@ -126,8 +121,6 @@ class ProgressReportPage extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 32),
-
-                // --- PRA WARNING MODULE ---
                 if (praWarnings > 0) ...[
                   const Text('PREDICTIVE RISK ASSESSMENT', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
@@ -158,8 +151,6 @@ class ProgressReportPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 24),
                 ],
-
-                // --- EXERCISE BREAKDOWN ---
                 const Text('EXERCISE BREAKDOWN', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 _buildExerciseBreakdown('Squats', 15, 12, 3),
@@ -168,8 +159,6 @@ class ProgressReportPage extends StatelessWidget {
               ],
             ),
           ),
-
-          // --- PROCEED BUTTON ---
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -184,14 +173,13 @@ class ProgressReportPage extends StatelessWidget {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               onPressed: () {
-                // Return to the Dashboard and destroy the session stack
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(builder: (_) => MainLayout(cameras: cameras)),
-                  (route) => false, // This ensures they can't press Android 'Back' to return to the report
+                  (route) => false, 
                 );
               },
-              child: const Text('COMPLETE WORKOUT', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+              child: const Text('LOG SESSION', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.2)), // Updated
             ),
           ),
         ],
