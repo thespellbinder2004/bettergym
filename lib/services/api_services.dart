@@ -2,12 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-<<<<<<< HEAD
-  static const String baseUrl = 'https://bettergym.online';
-=======
   static const String baseUrl = 'https://bettergym.online/';
->>>>>>> 50253ec5d3fb46bf3865df1e72df528b515e20c9
-
   static Future<Map<String, dynamic>> login({
     required String username,
     required String password,
