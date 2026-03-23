@@ -1,85 +1,43 @@
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'screens/login_page.dart';
-import 'screens/main_layout.dart';
+import 'services/hardware_service.dart'; // NEW
 
-late List<CameraDescription> cameras;
-
-// --- GLOBAL THEME COLORS ---
-const Color navyBlue = Color(0xFF0B132B);
-const Color darkSlate = Color(0xFF1C2541);
-const Color mintGreen = Color(0xFF48E5C2);
-const Color neonRed = Color(0xFFFF4D4D);
+// --- GLOBAL COLORS ---
+const Color mintGreen = Color(0xFF00FFCC);
+const Color navyBlue = Color(0xFF0A192F);
+const Color darkSlate = Color(0xFF112240);
+const Color neonRed = Color(0xFFFF3366);
 
 Future<void> main() async {
+  // Ensure the engine is running before talking to native hardware
   WidgetsFlutterBinding.ensureInitialized();
-  cameras = await availableCameras();
-  runApp(const MainApp());
+  
+  // NEW: Boot the hardware service globally
+  await HardwareService.instance.init(); 
+
+  runApp(const MyApp());
 }
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+class MyApp extends StatelessWidget {
+  // NEW: Removed the camera requirements from the constructor
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      title: 'Better-GYM',
       debugShowCheckedModeBanner: false,
-      title: 'BetterGym',
       theme: ThemeData(
         scaffoldBackgroundColor: navyBlue,
-        primaryColor: mintGreen,
         colorScheme: const ColorScheme.dark(
           primary: mintGreen,
-          secondary: mintGreen,
           surface: darkSlate,
-          error: neonRed,
         ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: navyBlue,
-          elevation: 0,
-          centerTitle: true,
-        ),
+        fontFamily: 'Roboto', 
       ),
-      home: HomeEntry(cameras: cameras),
-    );
-  }
-}
-
-class HomeEntry extends StatelessWidget {
-  const HomeEntry({super.key, required this.cameras});
-
-  final List<CameraDescription> cameras;
-
-  Future<bool> _checkLoginStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('logged_in') ?? false;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // This checks auth status before rendering the first screen
-    return FutureBuilder<bool>(
-      future: _checkLoginStatus(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          // Splash/Loading screen while checking auth
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(color: mintGreen),
-            ),
-          );
-        }
-
-        final isLoggedIn = snapshot.data ?? false;
-
-        if (isLoggedIn) {
-          return MainLayout(cameras: cameras); // Bypass Login
-        } else {
-          return LoginPage(cameras: cameras);
-        }
-      },
+      // NEW: Removed cameras parameter
+      home: const LoginPage(), 
     );
   }
 }

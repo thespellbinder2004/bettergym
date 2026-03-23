@@ -1,4 +1,3 @@
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../main.dart'; // Inherit global colors
@@ -6,7 +5,6 @@ import 'main_layout.dart';
 import 'progress_report_page.dart';
 
 class SessionSummaryPage extends StatefulWidget {
-  final List<CameraDescription> cameras;
   
   // We can pass real data here later when the ML math is done.
   // For now, these are placeholders for the UI.
@@ -16,7 +14,6 @@ class SessionSummaryPage extends StatefulWidget {
 
   const SessionSummaryPage({
     super.key, 
-    required this.cameras,
     this.totalReps = 142,
     this.durationMinutes = 45,
     this.formWarnings = 3,
@@ -156,7 +153,7 @@ class _SessionSummaryPageState extends State<SessionSummaryPage> with SingleTick
                       onPressed: () {
                         Navigator.pushReplacement(
                           context,
-                          MaterialPageRoute(builder: (_) => ProgressReportPage(cameras: widget.cameras)),
+                          MaterialPageRoute(builder: (_) => ProgressReportPage()),
                         );
                       },
                       child: const Text('VIEW DETAILED REPORT', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
@@ -173,7 +170,7 @@ class _SessionSummaryPageState extends State<SessionSummaryPage> with SingleTick
                         // Flushes the route stack and returns to the Dashboard
                         Navigator.pushAndRemoveUntil(
                           context,
-                          MaterialPageRoute(builder: (_) => MainLayout(cameras: widget.cameras)),
+                          MaterialPageRoute(builder: (_) => MainLayout()),
                           (route) => false,
                         );
                       },

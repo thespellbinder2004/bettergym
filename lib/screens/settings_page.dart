@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../main.dart'; 
-import '../services/audio_service.dart'; // NEW: Added to update live audio state
+import '../services/audio_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -18,6 +18,8 @@ class _SettingsPageState extends State<SettingsPage> {
   
   bool _masterSound = true;
   bool _leadInBeeps = true;
+  bool _repChime = true;     // NEW
+  bool _metronome = true;    // NEW
   double _volume = 0.5;
 
   @override
@@ -35,6 +37,8 @@ class _SettingsPageState extends State<SettingsPage> {
       
       _masterSound = prefs.getBool('master_sound') ?? true;
       _leadInBeeps = prefs.getBool('leadin_beeps') ?? true;
+      _repChime = prefs.getBool('rep_chime') ?? true;       // NEW
+      _metronome = prefs.getBool('metronome') ?? true;      // NEW
       _volume = prefs.getDouble('audio_volume') ?? 0.5;
     });
   }
@@ -129,27 +133,53 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 SwitchListTile(
                   activeColor: mintGreen,
-                  title: const Text('Master Audio', style: TextStyle(color: Colors.white)),
+                  title: const Text('Master Audio', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   subtitle: const Text('Enable all app sounds', style: TextStyle(color: Colors.grey, fontSize: 12)),
                   value: _masterSound,
                   onChanged: (val) async {
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.setBool('master_sound', val);
                     setState(() => _masterSound = val);
-                    await AudioService.instance.loadSettings(); // BUG FIX
+                    await AudioService.instance.loadSettings();
                   },
                 ),
                 Divider(color: Colors.grey.withOpacity(0.2), height: 1),
                 SwitchListTile(
                   activeColor: mintGreen,
-                  title: const Text('3-Second Lead-In Beeps', style: TextStyle(color: Colors.white)),
-                  subtitle: const Text('Plays before a set begins', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  title: const Text('Rep Completion Chime', style: TextStyle(color: Colors.white)),
+                  subtitle: const Text('Plays when a rep is successfully counted', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  value: _repChime,
+                  onChanged: !_masterSound ? null : (val) async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool('rep_chime', val);
+                    setState(() => _repChime = val);
+                    await AudioService.instance.loadSettings();
+                  },
+                ),
+                Divider(color: Colors.grey.withOpacity(0.2), height: 1),
+                SwitchListTile(
+                  activeColor: mintGreen,
+                  title: const Text('Duration Metronome', style: TextStyle(color: Colors.white)),
+                  subtitle: const Text('Ticks every second during timed holds', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  value: _metronome,
+                  onChanged: !_masterSound ? null : (val) async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool('metronome', val);
+                    setState(() => _metronome = val);
+                    await AudioService.instance.loadSettings();
+                  },
+                ),
+                Divider(color: Colors.grey.withOpacity(0.2), height: 1),
+                SwitchListTile(
+                  activeColor: mintGreen,
+                  title: const Text('Lead-In Beeps', style: TextStyle(color: Colors.white)),
+                  subtitle: const Text('3-second countdown before a set begins', style: TextStyle(color: Colors.grey, fontSize: 12)),
                   value: _leadInBeeps,
                   onChanged: !_masterSound ? null : (val) async {
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.setBool('leadin_beeps', val);
                     setState(() => _leadInBeeps = val);
-                    await AudioService.instance.loadSettings(); // BUG FIX
+                    await AudioService.instance.loadSettings();
                   },
                 ),
                 Divider(color: Colors.grey.withOpacity(0.2), height: 1),
@@ -170,7 +200,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     onChangeEnd: (val) async {
                       final prefs = await SharedPreferences.getInstance();
                       await prefs.setDouble('audio_volume', val);
-                      await AudioService.instance.loadSettings(); // BUG FIX
+                      await AudioService.instance.loadSettings();
                     },
                   ),
                 ),

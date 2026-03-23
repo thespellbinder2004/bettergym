@@ -1,12 +1,8 @@
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-
 import '../services/api_services.dart';
 
 class RegisterPage extends StatefulWidget {
-  const RegisterPage({super.key, required this.cameras});
-
-  final List<CameraDescription> cameras;
+  const RegisterPage({super.key}); // CLEANED
 
   @override
   State<RegisterPage> createState() => _RegisterPageState();
@@ -111,45 +107,22 @@ class _RegisterPageState extends State<RegisterPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextField(
-                    controller: _usernameController,
-                    decoration: _inputDecoration('Username'),
-                  ),
+                  TextField(controller: _usernameController, decoration: _inputDecoration('Username')),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: _passwordController,
-                    obscureText: true,
-                    decoration: _inputDecoration('Password'),
-                  ),
+                  TextField(controller: _passwordController, obscureText: true, decoration: _inputDecoration('Password')),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: _emailController,
-                    decoration: _inputDecoration('Email'),
-                  ),
+                  TextField(controller: _emailController, decoration: _inputDecoration('Email')),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: _firstNameController,
-                    decoration: _inputDecoration('First Name'),
-                  ),
+                  TextField(controller: _firstNameController, decoration: _inputDecoration('First Name')),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: _lastNameController,
-                    decoration: _inputDecoration('Last Name'),
-                  ),
+                  TextField(controller: _lastNameController, decoration: _inputDecoration('Last Name')),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: _birthdayController,
-                    decoration: _inputDecoration('Birthday (YYYY-MM-DD)'),
-                  ),
+                  TextField(controller: _birthdayController, decoration: _inputDecoration('Birthday (YYYY-MM-DD)')),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: _isLoading ? null : _register,
                     child: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Text('Sign Up'),
                   ),
                   if (_message.isNotEmpty) ...[
@@ -157,11 +130,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     Text(
                       _message,
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: _message.toLowerCase().contains('successful')
-                            ? Colors.green
-                            : Colors.red,
-                      ),
+                      style: TextStyle(color: _message.toLowerCase().contains('successful') ? Colors.green : Colors.red),
                     ),
                   ],
                 ],

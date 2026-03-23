@@ -1,20 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart'; // NEW: Required for camera passing
 import '../main.dart'; 
-import 'session_setup_page.dart'; // NEW: Required for navigation
+import 'session_setup_page.dart'; 
 
 class DashboardPage extends StatefulWidget {
-  final List<CameraDescription> cameras; // NEW: Accepts cameras from MainLayout
-
-  const DashboardPage({super.key, required this.cameras});
+  const DashboardPage({super.key}); // CLEANED
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  // --- MOCK DATA ---
-  final int _weeklySessions = 0; // Kept at 0 for Day Zero state
+  final int _weeklySessions = 0; 
   final double _averageFormScore = 0.0; 
   final String _focusMuscle = "Quadriceps";
 
@@ -75,16 +71,12 @@ class _DashboardPageState extends State<DashboardPage> {
     final bool isDayZero = _weeklySessions == 0;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Statistics'),
-        centerTitle: false,
-      ),
+      appBar: AppBar(title: const Text('Statistics'), centerTitle: false),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // --- HERO STAT: Average Form Score ---
             _buildGlassCard(
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -96,49 +88,29 @@ class _DashboardPageState extends State<DashboardPage> {
                       const SizedBox(height: 4),
                       Text(
                         isDayZero ? '--%' : '${(_averageFormScore * 100).toInt()}%',
-                        style: TextStyle(
-                          color: isDayZero ? Colors.grey : Colors.white, 
-                          fontSize: 36, 
-                          fontWeight: FontWeight.bold
-                        ),
+                        style: TextStyle(color: isDayZero ? Colors.grey : Colors.white, fontSize: 36, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isDayZero ? Colors.grey.withOpacity(0.1) : mintGreen.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
+                        decoration: BoxDecoration(color: isDayZero ? Colors.grey.withOpacity(0.1) : mintGreen.withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
                         child: Text(
                           isDayZero ? 'Awaiting Data' : '+2% this week', 
-                          style: TextStyle(
-                            color: isDayZero ? Colors.grey : mintGreen, 
-                            fontSize: 12, 
-                            fontWeight: FontWeight.bold
-                          )
+                          style: TextStyle(color: isDayZero ? Colors.grey : mintGreen, fontSize: 12, fontWeight: FontWeight.bold)
                         ),
                       ),
                     ],
                   ),
                   SizedBox(
-                    height: 100,
-                    width: 100,
+                    height: 100, width: 100,
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
                         CircularProgressIndicator(
                           value: isDayZero ? 1.0 : _averageFormScore,
-                          strokeWidth: 8,
-                          backgroundColor: navyBlue,
-                          color: isDayZero ? Colors.grey.withOpacity(0.2) : mintGreen,
+                          strokeWidth: 8, backgroundColor: navyBlue, color: isDayZero ? Colors.grey.withOpacity(0.2) : mintGreen,
                         ),
-                        Center(
-                          child: Icon(
-                            isDayZero ? Icons.query_stats : Icons.analytics, 
-                            color: isDayZero ? Colors.grey.withOpacity(0.5) : mintGreen, 
-                            size: 40
-                          ),
-                        ),
+                        Center(child: Icon(isDayZero ? Icons.query_stats : Icons.analytics, color: isDayZero ? Colors.grey.withOpacity(0.5) : mintGreen, size: 40)),
                       ],
                     ),
                   ),
@@ -146,8 +118,6 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             ),
             const SizedBox(height: 16),
-
-            // --- WEEKLY HEATMAP ---
             _buildGlassCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -156,10 +126,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Weekly Consistency', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                      Text(
-                        '$_weeklySessions Sessions', 
-                        style: TextStyle(color: isDayZero ? Colors.grey : mintGreen, fontSize: 14)
-                      ),
+                      Text('$_weeklySessions Sessions', style: TextStyle(color: isDayZero ? Colors.grey : mintGreen, fontSize: 14)),
                     ],
                   ),
                   const SizedBox(height: 20),
@@ -171,8 +138,6 @@ class _DashboardPageState extends State<DashboardPage> {
               ),
             ),
             const SizedBox(height: 24),
-
-            // --- DAY ZERO CTA vs. LATEST SESSION ---
             if (isDayZero) ...[
               _buildGlassCard(
                 padding: const EdgeInsets.all(24),
@@ -188,26 +153,16 @@ class _DashboardPageState extends State<DashboardPage> {
                     const SizedBox(height: 8),
                     const Text(
                       'Your biometric tracking is offline. Start a session to calibrate the AI and begin logging your form data.', 
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey, height: 1.4)
+                      textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, height: 1.4)
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: mintGreen,
-                        foregroundColor: navyBlue,
-                        minimumSize: const Size.fromHeight(56),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 8,
+                        backgroundColor: mintGreen, foregroundColor: navyBlue, minimumSize: const Size.fromHeight(56),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 8,
                       ),
                       onPressed: () {
-                        // NEW: Direct route to the Session Setup Page
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => SessionSetupPage(cameras: widget.cameras),
-                          ),
-                        );
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const SessionSetupPage())); // CLEANED
                       },
                       child: const Text('INITIATE FIRST SESSION', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
                     ),
@@ -215,18 +170,14 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
               ),
             ] else ...[
-              const Text(
-                'LATEST SESSION',
-                style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-              ),
+              const Text('LATEST SESSION', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
               const SizedBox(height: 8),
               _buildGlassCard(
                 padding: EdgeInsets.zero,
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(16),
                   leading: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: navyBlue, borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: navyBlue, borderRadius: BorderRadius.circular(12)),
                     child: const Icon(Icons.fitness_center, color: Colors.white),
                   ),
                   title: const Text('Lower Body Power', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -235,9 +186,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     child: Text('Primary Focus: $_focusMuscle\n45 mins • 3 PRA Warnings', style: const TextStyle(color: Colors.grey, height: 1.4)),
                   ),
                   trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                  onTap: () {
-                    // Route to Frame 9 (Progress Report) history
-                  },
+                  onTap: () {},
                 ),
               ),
             ]

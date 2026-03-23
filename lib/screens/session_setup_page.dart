@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -29,8 +28,7 @@ class WorkoutSet {
 }
 
 class SessionSetupPage extends StatefulWidget {
-  final List<CameraDescription> cameras;
-  const SessionSetupPage({super.key, required this.cameras});
+  const SessionSetupPage({super.key}); // CLEANED
 
   @override
   State<SessionSetupPage> createState() => _SessionSetupPageState();
@@ -47,7 +45,6 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
     WorkoutSet(name: 'Plank', target: 60, isDuration: true),
   ];
 
-  // --- TEMPLATE LOGIC ---
   Future<void> _saveTemplate() async {
     if (_routine.isEmpty) return;
 
@@ -62,10 +59,8 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
           controller: nameController,
           style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
-            hintText: "e.g., Leg Day Alpha",
-            hintStyle: const TextStyle(color: Colors.grey),
-            filled: true, fillColor: navyBlue,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+            hintText: "e.g., Leg Day Alpha", hintStyle: const TextStyle(color: Colors.grey),
+            filled: true, fillColor: navyBlue, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
           ),
         ),
         actions: [
@@ -75,13 +70,10 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
             onPressed: () async {
               if (nameController.text.isEmpty) return;
               final prefs = await SharedPreferences.getInstance();
-              
               String? existingPrefs = prefs.getString('saved_templates');
               Map<String, dynamic> templates = existingPrefs != null ? jsonDecode(existingPrefs) : {};
-              
               templates[nameController.text] = _routine.map((e) => e.toJson()).toList();
               await prefs.setString('saved_templates', jsonEncode(templates));
-              
               if (mounted) {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Template saved.'), backgroundColor: mintGreen));
@@ -111,16 +103,11 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
     if (!mounted) return;
     
     showModalBottomSheet(
-      context: context,
-      backgroundColor: darkSlate,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      context: context, backgroundColor: darkSlate, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            if (templates.isEmpty) {
-              return const Center(child: Text("All templates deleted.", style: TextStyle(color: Colors.grey)));
-            }
-
+            if (templates.isEmpty) return const Center(child: Text("All templates deleted.", style: TextStyle(color: Colors.grey)));
             return ListView(
               padding: const EdgeInsets.all(20),
               children: [
@@ -132,20 +119,14 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                   trailing: IconButton(
                     icon: const Icon(Icons.delete_outline, color: neonRed),
                     onPressed: () async {
-                      setModalState(() {
-                        templates.remove(templateName);
-                      });
+                      setModalState(() { templates.remove(templateName); });
                       await prefs.setString('saved_templates', jsonEncode(templates));
-                      if (templates.isEmpty && mounted) {
-                        Navigator.pop(context);
-                      }
+                      if (templates.isEmpty && mounted) Navigator.pop(context);
                     },
                   ),
                   onTap: () {
                     setState(() {
-                      _routine = (templates[templateName] as List)
-                          .map((item) => WorkoutSet.fromJson(item))
-                          .toList();
+                      _routine = (templates[templateName] as List).map((item) => WorkoutSet.fromJson(item)).toList();
                     });
                     Navigator.pop(context);
                   },
@@ -162,32 +143,23 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
     String selectedName = existingSet?.name ?? _availableExercises.first;
     TextEditingController targetController = TextEditingController(text: existingSet?.target.toString() ?? '');
     bool isDuration = existingSet?.isDuration ?? false;
-    String? errorMessage; // NEW: Tracks validation failures
+    String? errorMessage; 
 
     showModalBottomSheet(
-      context: context,
-      backgroundColor: darkSlate,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      context: context, backgroundColor: darkSlate, isScrollControlled: true, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
             return Padding(
               padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
               child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(existingSet == null ? 'Add Exercise' : 'Edit Exercise', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    dropdownColor: navyBlue,
-                    value: selectedName,
-                    style: const TextStyle(color: mintGreen),
-                    decoration: InputDecoration(
-                      filled: true, fillColor: navyBlue,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                    ),
+                    dropdownColor: navyBlue, value: selectedName, style: const TextStyle(color: mintGreen),
+                    decoration: InputDecoration(filled: true, fillColor: navyBlue, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)),
                     items: _availableExercises.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                     onChanged: (val) { if (val != null) setModalState(() => selectedName = val); },
                   ),
@@ -200,34 +172,16 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             TextField(
-                              controller: targetController,
-                              keyboardType: TextInputType.number,
-                              style: const TextStyle(color: Colors.white),
+                              controller: targetController, keyboardType: TextInputType.number, style: const TextStyle(color: Colors.white),
                               decoration: InputDecoration(
-                                labelText: isDuration ? 'Target (Seconds)' : 'Target (Reps)',
-                                labelStyle: const TextStyle(color: Colors.grey),
-                                filled: true, fillColor: navyBlue,
-                                // NEW: Red border if error exists
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10), 
-                                  borderSide: errorMessage != null ? const BorderSide(color: neonRed, width: 2) : BorderSide.none
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10), 
-                                  borderSide: errorMessage != null ? const BorderSide(color: neonRed, width: 2) : const BorderSide(color: mintGreen, width: 2)
-                                ),
+                                labelText: isDuration ? 'Target (Seconds)' : 'Target (Reps)', labelStyle: const TextStyle(color: Colors.grey), filled: true, fillColor: navyBlue,
+                                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: errorMessage != null ? const BorderSide(color: neonRed, width: 2) : BorderSide.none),
+                                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: errorMessage != null ? const BorderSide(color: neonRed, width: 2) : const BorderSide(color: mintGreen, width: 2)),
                               ),
-                              onChanged: (_) {
-                                // Clear error when user starts typing again
-                                if (errorMessage != null) setModalState(() => errorMessage = null);
-                              },
+                              onChanged: (_) { if (errorMessage != null) setModalState(() => errorMessage = null); },
                             ),
-                            // NEW: Inline error message
                             if (errorMessage != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8, left: 4),
-                                child: Text(errorMessage!, style: const TextStyle(color: neonRed, fontSize: 12, fontWeight: FontWeight.bold)),
-                              ),
+                              Padding(padding: const EdgeInsets.only(top: 8, left: 4), child: Text(errorMessage!, style: const TextStyle(color: neonRed, fontSize: 12, fontWeight: FontWeight.bold))),
                           ],
                         ),
                       ),
@@ -238,14 +192,8 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                           children: [
                             const Text('Duration?', style: TextStyle(color: Colors.grey, fontSize: 12)),
                             Switch(
-                              activeColor: mintGreen, 
-                              value: isDuration, 
-                              onChanged: (val) {
-                                setModalState(() {
-                                  isDuration = val;
-                                  errorMessage = null; // Clear errors on type switch
-                                });
-                              }
+                              activeColor: mintGreen, value: isDuration, 
+                              onChanged: (val) { setModalState(() { isDuration = val; errorMessage = null; }); }
                             ),
                           ],
                         ),
@@ -254,27 +202,16 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                   ),
                   const SizedBox(height: 24),
                   ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: mintGreen, foregroundColor: navyBlue,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
+                    style: ElevatedButton.styleFrom(backgroundColor: mintGreen, foregroundColor: navyBlue, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
                     onPressed: () {
-                      // NEW: Strict Input Validation
                       final target = int.tryParse(targetController.text);
-                      
                       if (target == null || target <= 0) {
-                        setModalState(() {
-                          errorMessage = isDuration ? "Must be at least 1 second." : "Must be at least 1 rep.";
-                        });
-                        return; // Halt execution
+                        setModalState(() { errorMessage = isDuration ? "Must be at least 1 second." : "Must be at least 1 rep."; });
+                        return; 
                       }
-
                       setState(() {
                         if (existingSet != null && index != null) {
-                          existingSet.name = selectedName;
-                          existingSet.target = target;
-                          existingSet.isDuration = isDuration;
+                          existingSet.name = selectedName; existingSet.target = target; existingSet.isDuration = isDuration;
                         } else {
                           _routine.add(WorkoutSet(name: selectedName, target: target, isDuration: isDuration));
                         }
@@ -293,20 +230,14 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
     );
   }
 
-  void _removeExercise(int index) {
-    setState(() => _routine.removeAt(index));
-  }
+  void _removeExercise(int index) { setState(() => _routine.removeAt(index)); }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Session Setup'), 
-        centerTitle: false,
-        automaticallyImplyLeading: false, 
-        actions: [
-          IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-        ],
+        title: const Text('Session Setup'), centerTitle: false, automaticallyImplyLeading: false, 
+        actions: [IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context))],
       ),
       body: Column(
         children: [
@@ -314,40 +245,17 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             child: Row(
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.grey)),
-                    icon: const Icon(Icons.folder_open, size: 18),
-                    label: const Text('Load'),
-                    onPressed: _loadTemplate,
-                  ),
-                ),
+                Expanded(child: OutlinedButton.icon(style: OutlinedButton.styleFrom(foregroundColor: Colors.white, side: const BorderSide(color: Colors.grey)), icon: const Icon(Icons.folder_open, size: 18), label: const Text('Load'), onPressed: _loadTemplate)),
                 const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(foregroundColor: mintGreen, side: const BorderSide(color: mintGreen)),
-                    icon: const Icon(Icons.save, size: 18),
-                    label: const Text('Save'),
-                    onPressed: _routine.isEmpty ? null : _saveTemplate,
-                  ),
-                ),
+                Expanded(child: OutlinedButton.icon(style: OutlinedButton.styleFrom(foregroundColor: mintGreen, side: const BorderSide(color: mintGreen)), icon: const Icon(Icons.save, size: 18), label: const Text('Save'), onPressed: _routine.isEmpty ? null : _saveTemplate)),
               ],
             ),
           ),
-          
           Expanded(
             child: _routine.isEmpty
-                ? Center(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(foregroundColor: mintGreen, side: const BorderSide(color: mintGreen)),
-                      icon: const Icon(Icons.add),
-                      label: const Text('ADD EXERCISE'),
-                      onPressed: () => _addOrEditExercise(),
-                    ),
-                  )
+                ? Center(child: OutlinedButton.icon(style: OutlinedButton.styleFrom(foregroundColor: mintGreen, side: const BorderSide(color: mintGreen)), icon: const Icon(Icons.add), label: const Text('ADD EXERCISE'), onPressed: () => _addOrEditExercise()))
                 : ReorderableListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _routine.length,
+                    padding: const EdgeInsets.all(16), itemCount: _routine.length,
                     onReorder: (oldIndex, newIndex) {
                       setState(() {
                         if (newIndex > oldIndex) newIndex -= 1;
@@ -358,28 +266,16 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                     footer: Padding(
                       padding: const EdgeInsets.only(top: 16.0),
                       child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: mintGreen,
-                          side: const BorderSide(color: mintGreen),
-                          minimumSize: const Size.fromHeight(50),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        icon: const Icon(Icons.add),
-                        label: const Text('ADD EXERCISE'),
-                        onPressed: () => _addOrEditExercise(),
+                        style: OutlinedButton.styleFrom(foregroundColor: mintGreen, side: const BorderSide(color: mintGreen), minimumSize: const Size.fromHeight(50), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                        icon: const Icon(Icons.add), label: const Text('ADD EXERCISE'), onPressed: () => _addOrEditExercise(),
                       ),
                     ),
                     itemBuilder: (context, index) {
                       final set = _routine[index];
                       return Card(
-                        key: Key(set.id), 
-                        color: darkSlate,
-                        margin: const EdgeInsets.only(bottom: 8),
+                        key: Key(set.id), color: darkSlate, margin: const EdgeInsets.only(bottom: 8),
                         child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: navyBlue,
-                            child: Text('${index + 1}', style: const TextStyle(color: mintGreen)),
-                          ),
+                          leading: CircleAvatar(backgroundColor: navyBlue, child: Text('${index + 1}', style: const TextStyle(color: mintGreen))),
                           title: Text(set.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                           subtitle: Text(set.isDuration ? '${set.target} seconds' : '${set.target} reps', style: const TextStyle(color: Colors.grey)),
                           trailing: Row(
@@ -395,19 +291,15 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                     },
                   ),
           ),
-          
           Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: navyBlue, border: Border(top: BorderSide(color: mintGreen.withOpacity(0.2)))),
+            padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: navyBlue, border: Border(top: BorderSide(color: mintGreen.withOpacity(0.2)))),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.greenAccent.shade400, foregroundColor: Colors.black,
-                minimumSize: const Size.fromHeight(60),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 8,
+                backgroundColor: Colors.greenAccent.shade400, foregroundColor: Colors.black, minimumSize: const Size.fromHeight(60),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 8,
               ),
               onPressed: _routine.isEmpty ? null : () {
-                Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => PoseCameraPage(cameras: widget.cameras, routine: _routine)));
+                Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => PoseCameraPage(routine: _routine))); // CLEANED
               },
               child: const Text('START SESSION', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
             ),

@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:camera/camera.dart';
 
 import '../main.dart'; // Inherit global colors
 import 'login_page.dart';
 
 class ProfilePage extends StatefulWidget {
-  final List<CameraDescription> cameras;
-  
-  const ProfilePage({super.key, required this.cameras});
+  const ProfilePage({super.key});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -68,7 +65,7 @@ class _ProfilePageState extends State<ProfilePage> {
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
-          builder: (_) => LoginPage(cameras: widget.cameras),
+          builder: (_) => LoginPage(),
         ),
         (route) => false,
       );

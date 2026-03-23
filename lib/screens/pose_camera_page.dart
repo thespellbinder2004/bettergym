@@ -6,11 +6,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
-import 'package:permission_handler/permission_handler.dart'; // NEW: Permission handling
+import 'package:permission_handler/permission_handler.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../main.dart';
 import '../services/audio_service.dart'; 
+import '../services/hardware_service.dart'; // NEW: Hardware injection
 import 'progress_report_page.dart';
 import 'session_setup_page.dart';
 import 'session_summary_page.dart';
@@ -18,10 +19,9 @@ import 'session_summary_page.dart';
 enum SessionPhase { acquisition, prep, active, rest, finished }
 
 class PoseCameraPage extends StatefulWidget {
-  final List<CameraDescription> cameras;
   final List<WorkoutSet> routine;
 
-  const PoseCameraPage({super.key, required this.cameras, required this.routine});
+  const PoseCameraPage({super.key, required this.routine}); // CLEANED
 
   @override
   State<PoseCameraPage> createState() => _PoseCameraPageState();
@@ -31,7 +31,6 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
   CameraController? _cameraController;
   late final PoseDetector _poseDetector;
 
-  // --- NEW: Permission State Variables ---
   bool _isCheckingPermission = true;
   bool _hasCameraPermission = false;
 
@@ -70,7 +69,6 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
       options: PoseDetectorOptions(mode: PoseDetectionMode.stream, model: PoseDetectionModel.base),
     );
     
-    // NEW: Intercept flow to check permissions first
     _verifyPermissionsAndBoot();
 
     SystemChrome.setPreferredOrientations([
@@ -80,7 +78,6 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
     ]);
   }
 
-  // --- NEW: Permission Gatekeeper ---
   Future<void> _verifyPermissionsAndBoot() async {
     final status = await Permission.camera.request();
     
@@ -277,7 +274,11 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
 
   Future<void> _initCamera() async {
     try {
-      final camera = widget.cameras.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => widget.cameras.first);
+      // NEW: Pull cameras directly from the global HardwareService
+      final availableCams = HardwareService.instance.cameras;
+      if (availableCams.isEmpty) throw Exception('No cameras found.');
+
+      final camera = availableCams.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => availableCams.first);
       _isFrontCamera = camera.lensDirection == CameraLensDirection.front;
       final controller = CameraController(
         camera, ResolutionPreset.medium, enableAudio: false, fps: 30,
@@ -370,10 +371,9 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
     _exitTimer?.cancel();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     
-    // NEW: Routes to the Climax screen instead of the Report
     Navigator.pushReplacement(
       context, 
-      MaterialPageRoute(builder: (_) => SessionSummaryPage(cameras: widget.cameras))
+      MaterialPageRoute(builder: (_) => const SessionSummaryPage()) // CLEANED
     );
   }
 
@@ -479,7 +479,6 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
     );
   }
 
-  // --- NEW: Intercepts the build to show the Permission Wall if needed ---
   @override
   Widget build(BuildContext context) {
     if (_isCheckingPermission) {

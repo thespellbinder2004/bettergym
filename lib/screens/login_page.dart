@@ -1,4 +1,3 @@
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -8,9 +7,8 @@ import 'main_layout.dart';
 import 'register_page.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key, required this.cameras});
-
-  final List<CameraDescription> cameras;
+  // CUT 1 & 2: Constructor is clean. No cameras required.
+  const LoginPage({super.key});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -22,7 +20,7 @@ class _LoginPageState extends State<LoginPage> {
 
   bool _isLoading = false;
   String _message = '';
-  bool _isPasswordVisible = false; // NEW: Tracks password visibility
+  bool _isPasswordVisible = false;
 
   Future<void> _saveLogin({required String username}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -64,7 +62,8 @@ class _LoginPageState extends State<LoginPage> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => MainLayout(cameras: widget.cameras),
+            // CUT 3: Removed cameras parameter here
+            builder: (_) => const MainLayout(),
           ),
         );
       } else {
@@ -93,13 +92,12 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  // UPDATED: Now accepts an optional suffixIcon widget
   InputDecoration _customInputDecoration(String label, IconData icon, {Widget? suffixIcon}) {
     return InputDecoration(
       labelText: label,
       labelStyle: TextStyle(color: Colors.grey.shade400),
       prefixIcon: Icon(icon, color: mintGreen),
-      suffixIcon: suffixIcon, // Injects the eyeball icon here
+      suffixIcon: suffixIcon,
       filled: true,
       fillColor: darkSlate,
       enabledBorder: OutlineInputBorder(
@@ -126,7 +124,6 @@ class _LoginPageState extends State<LoginPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // App Logo / Title
                   const Icon(Icons.fitness_center, size: 64, color: mintGreen),
                   const SizedBox(height: 16),
                   const Text(
@@ -150,7 +147,6 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 48),
 
-                  // Input Fields
                   TextField(
                     controller: _usernameController,
                     style: const TextStyle(color: Colors.white),
@@ -158,10 +154,9 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 16),
                   
-                  // UPDATED: Password Field with Toggle
                   TextField(
                     controller: _passwordController,
-                    obscureText: !_isPasswordVisible, // Inverts based on state
+                    obscureText: !_isPasswordVisible,
                     style: const TextStyle(color: Colors.white),
                     decoration: _customInputDecoration(
                       'Password', 
@@ -182,7 +177,6 @@ class _LoginPageState extends State<LoginPage> {
                   
                   const SizedBox(height: 24),
 
-                  // Login Button
                   SizedBox(
                     height: 50,
                     child: ElevatedButton(
@@ -216,7 +210,6 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 16),
 
-                  // Register Link
                   TextButton(
                     onPressed: _isLoading
                         ? null
@@ -224,8 +217,8 @@ class _LoginPageState extends State<LoginPage> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    RegisterPage(cameras: widget.cameras),
+                                // CUT 4: Removed cameras parameter here
+                                builder: (_) => const RegisterPage(),
                               ),
                             );
                           },
@@ -246,7 +239,6 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
 
-                  // Error Message Display
                   if (_message.isNotEmpty) ...[
                     const SizedBox(height: 24),
                     Container(

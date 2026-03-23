@@ -1,17 +1,15 @@
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../main.dart'; 
 import 'main_layout.dart';
 
 class ProgressReportPage extends StatelessWidget {
-  final List<CameraDescription> cameras;
   
   final int totalScore = 88;
   final int totalDurationMins = 42;
   final int praWarnings = 1;
 
-  const ProgressReportPage({super.key, required this.cameras});
+  const ProgressReportPage({super.key});
 
   Widget _buildStatCard(String title, String value, Color color) {
     return Container(
@@ -175,7 +173,7 @@ class ProgressReportPage extends StatelessWidget {
               onPressed: () {
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (_) => MainLayout(cameras: cameras)),
+                  MaterialPageRoute(builder: (_) => MainLayout()),
                   (route) => false, 
                 );
               },
