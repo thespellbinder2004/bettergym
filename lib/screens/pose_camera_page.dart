@@ -323,7 +323,7 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
       final camera = availableCams.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => availableCams.first);
       _isFrontCamera = camera.lensDirection == CameraLensDirection.front;
       final controller = CameraController(
-        camera, ResolutionPreset.medium, enableAudio: false, fps: 30,
+        camera, ResolutionPreset.high, enableAudio: false, fps: 30,
         imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
       );
 
