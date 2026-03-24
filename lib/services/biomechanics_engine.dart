@@ -12,12 +12,15 @@ class BiomechanicsEngine {
   
   int _consecutiveBadFrames = 0;
   int _consecutiveGoodFrames = 0;
-  static const int _debounceThreshold = 8; // Requires ~250ms of sustained failure to trigger
+  
+  // ASYMMETRIC DEBOUNCE: Ruthless to fail, hard to recover.
+  static const int _failThreshold = 3; 
+  static const int _recoverThreshold = 6; 
 
   int _publishedFormState = 1;
   String _publishedFormError = "";
   Set<PoseLandmarkType> _publishedFaultyJoints = {};
-  double _smoothedFormScore = 1.0; // The Low-Pass Filter state
+  double _smoothedFormScore = 1.0; 
 
   void reset() {
     _isDown = false;
@@ -100,132 +103,111 @@ class BiomechanicsEngine {
       return {'goodRepTriggered': false, 'badRepTriggered': false, 'formState': 0, 'feedback': "Align side profile to camera.", 'activeJoints': activeJoints, 'faultyJoints': <PoseLandmarkType>{}, 'formScore': 0.0};
     }
 
-    // --- PERSPECTIVE LOCK ---
+    final torsoDx = (shoulder.x - hip.x).abs();
+    final torsoDy = (shoulder.y - hip.y).abs();
+    if (torsoDy > torsoDx) {
+      return {'goodRepTriggered': false, 'badRepTriggered': false, 'formState': 0, 'feedback': "Get down into plank position.", 'activeJoints': activeJoints, 'faultyJoints': <PoseLandmarkType>{}, 'formScore': 1.0};
+    }
+
     final shoulderWidth = (leftShoulder.x - rightShoulder.x).abs();
     final torsoLength = math.sqrt(math.pow(shoulder.x - hip.x, 2) + math.pow(shoulder.y - hip.y, 2));
-
     if (shoulderWidth > torsoLength * 0.6) {
       return {'goodRepTriggered': false, 'badRepTriggered': false, 'formState': 0, 'feedback': "Turn sideways! Front view is not supported.", 'activeJoints': activeJoints, 'faultyJoints': <PoseLandmarkType>{}, 'formScore': 0.0};
     }
 
-    // --- ENGAGEMENT LOCK: Must be horizontal ---
-    // Calculate the X (width) and Y (height) spread of the torso
-    final torsoDx = (shoulder.x - hip.x).abs();
-    final torsoDy = (shoulder.y - hip.y).abs();
-    
-    // If the vertical height is greater than the horizontal width, they are standing up.
-    if (torsoDy > torsoDx) {
-      return {
-        'goodRepTriggered': false, 
-        'badRepTriggered': false, 
-        'formState': 0, // Grey skeleton
-        'feedback': "Get down into plank position.", 
-        'activeJoints': activeJoints, 
-        'faultyJoints': <PoseLandmarkType>{}, 
-        'formScore': 1.0
-      };
-    }
-
-    // 1. The 4-Point Kinetic Chain
     final hipHingeAngle = _calculateAngle(shoulder, hip, knee); 
     final kneeFlexionAngle = _calculateAngle(hip, knee, ankle); 
     final elbowAngle = _calculateAngle(shoulder, elbow, wrist); 
     final shoulderAngle = _calculateAngle(hip, shoulder, elbow); 
 
-    // 2. Thermometer Smoothing (Low-Pass Filter)
-    double coreScore = ((hipHingeAngle - 155.0) / 20.0).clamp(0.0, 1.0);
-    double kneeScore = ((kneeFlexionAngle - 155.0) / 20.0).clamp(0.0, 1.0);
-    double handScore = ((105.0 - shoulderAngle) / 20.0).clamp(0.0, 1.0);
+    // Stricter Thermometer Math
+    double coreScore = ((hipHingeAngle - 150.0) / 15.0).clamp(0.0, 1.0);
+    double kneeScore = ((kneeFlexionAngle - 150.0) / 15.0).clamp(0.0, 1.0);
+    double handScore = ((115.0 - shoulderAngle) / 15.0).clamp(0.0, 1.0);
     double rawFormScore = math.min(coreScore, math.min(kneeScore, handScore));
     
     _smoothedFormScore = (_smoothedFormScore * 0.8) + (rawFormScore * 0.2);
 
-    // 3. Raw Heuristic Checks
+    // --- INDEPENDENT HEURISTIC CHECKS (NO MORE ELSE-IF) ---
     int rawFormState = 1; 
     String rawFormError = "";
     Set<PoseLandmarkType> rawFaultyJoints = {};
+    List<String> ttsVariations = [];
 
-    // --- SAGGING VS PIKING MATH ---
-    // Calculate the expected Y position of the hip if the body were perfectly straight
     double expectedHipY = shoulder.y + (hip.x - shoulder.x) * ((knee.y - shoulder.y) / (knee.x - shoulder.x == 0 ? 0.001 : knee.x - shoulder.x));
-    
-    // In Flutter, +Y is downward. If actual hip Y is greater, it's sagging toward the floor.
     bool isSagging = hip.y > expectedHipY;
 
-    if (kneeFlexionAngle < 160.0) {
+    // Check 1: Knees (Bumped to 165 strictness)
+    if (kneeFlexionAngle < 165.0) {
       rawFormState = -1;
-      rawFormError = "Knees bent.";
       rawFaultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle, PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle]);
-      
-      AudioService.instance.speakCorrection([
-        "Knees are bent, straighten your legs.",
-        "Keep your legs completely straight.",
-        "Lock your knees out."
-      ]);
-
-    } else if (hipHingeAngle < 160.0) {
+      if (rawFormError.isEmpty) {
+        rawFormError = "Knees bent.";
+        ttsVariations = ["Knees are bent, straighten your legs.", "Keep your legs completely straight.", "Lock your knees out."];
+      }
+    } 
+    
+    // Check 2: Hips (Bumped to 165 strictness)
+    if (hipHingeAngle < 165.0) {
       rawFormState = -1;
       rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee]);
-      
-      if (isSagging) {
-        rawFormError = "Hips sagging.";
-        AudioService.instance.speakCorrection([
-          "Hips are dropping. Squeeze your core.",
-          "Keep your back straight. Don't let your hips sag.",
-          "Tighten your core. Your hips are falling."
-        ]);
-      } else {
-        rawFormError = "Butt too high.";
-        AudioService.instance.speakCorrection([
-          "Lower your hips. Your butt is too high.",
-          "Bring your hips down into a straight plank.",
-          "Flatten your back. Hips are too high."
-        ]);
+      if (rawFormError.isEmpty) {
+        if (isSagging) {
+          rawFormError = "Hips sagging.";
+          ttsVariations = ["Hips are dropping. Squeeze your core.", "Keep your back straight. Don't let your hips sag.", "Tighten your core. Your hips are falling."];
+        } else {
+          rawFormError = "Butt too high.";
+          ttsVariations = ["Lower your hips. Your butt is too high.", "Bring your hips down into a straight plank.", "Flatten your back. Hips are too high."];
+        }
       }
-
-    } else if (shoulderAngle > 100.0) {
+    } 
+    
+    // Check 3: Shoulders
+    if (shoulderAngle > 105.0) {
       rawFormState = -1;
-      rawFormError = "Hands too far forward.";
       rawFaultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow, PoseLandmarkType.rightHip, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow]);
-      
-      AudioService.instance.speakCorrection([
-        "Move your hands back. They should be under your shoulders.",
-        "Your hands are too far forward. Bring them back.",
-        "Stack your wrists directly under your shoulders."
-      ]);
+      if (rawFormError.isEmpty) {
+        rawFormError = "Hands too far forward.";
+        ttsVariations = ["Move your hands back. They should be under your shoulders.", "Your hands are too far forward. Bring them back.", "Stack your wrists directly under your shoulders."];
+      }
     }
 
-    // --- THE AMNESIA PROTOCOL (Rep Taint Reset) ---
-    // If they are locked out at the top AND their form is currently perfect, wipe the slate clean.
+    // --- THE AMNESIA PROTOCOL ---
     if (elbowAngle >= 150.0 && rawFormState == 1) {
       _hasFormBrokenThisRep = false; 
     }
 
-    // --- DEBOUNCE LOGIC ---
+    // --- ASYMMETRIC DEBOUNCE LOGIC ---
     if (rawFormState == -1) {
       _consecutiveBadFrames++;
-      _consecutiveGoodFrames = 0;
-      if (_consecutiveBadFrames >= _debounceThreshold) {
+      if (_consecutiveGoodFrames > 0) _consecutiveGoodFrames--; // Decay, don't instantly reset
+      
+      if (_consecutiveBadFrames >= _failThreshold) {
         _publishedFormState = -1;
         _publishedFormError = rawFormError;
-        _publishedFaultyJoints = Set.from(rawFaultyJoints);
+        _publishedFaultyJoints.addAll(rawFaultyJoints);
         
-        // Officially taint the rep, but only if they are actually starting to lower themselves or are down
+        // Trigger Audio when officially failing
+        if (ttsVariations.isNotEmpty) {
+           AudioService.instance.speakCorrection(ttsVariations);
+        }
+        
         if (elbowAngle < 150.0 || _isDown) {
           _hasFormBrokenThisRep = true; 
         }
       }
     } else {
       _consecutiveGoodFrames++;
-      _consecutiveBadFrames = 0;
-      if (_consecutiveGoodFrames >= _debounceThreshold) {
+      if (_consecutiveBadFrames > 0) _consecutiveBadFrames--; // Decay, don't instantly reset
+      
+      if (_consecutiveGoodFrames >= _recoverThreshold) {
         _publishedFormState = 1;
         _publishedFormError = "";
         _publishedFaultyJoints = {};
       }
     }
 
-    // 4. Rep Logic
+    // 4. Strict Rep Logic
     bool goodRep = false;
     bool badRep = false;
     String repFeedback = "";
@@ -252,7 +234,6 @@ class BiomechanicsEngine {
       }
     }
 
-    // Feedback Priority: Form Errors override Rep Instructions
     String finalFeedback = _publishedFormState == -1 ? _publishedFormError : repFeedback;
 
     return {
@@ -302,38 +283,52 @@ class BiomechanicsEngine {
     final elbowAngle = _calculateAngle(shoulder, elbow, wrist);
     final shoulderSwingAngle = _calculateAngle(hip, shoulder, elbow);
 
-    // Thermometer Smoothing
     double rawFormScore = ((35.0 - shoulderSwingAngle) / 20.0).clamp(0.0, 1.0);
     _smoothedFormScore = (_smoothedFormScore * 0.8) + (rawFormScore * 0.2);
 
     int rawFormState = 1; 
     String rawFormError = "";
     Set<PoseLandmarkType> rawFaultyJoints = {};
+    List<String> ttsVariations = [];
 
     if (shoulderSwingAngle > 35.0) {
       rawFormState = -1;
       rawFormError = "Keep elbows tucked! Stop swinging.";
       rawFaultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow, PoseLandmarkType.rightHip, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow]);
+      ttsVariations = ["Keep elbows tucked! Stop swinging.", "Lock your elbows to your side.", "Don't swing the weight."];
     }
 
-    // --- DEBOUNCE LOGIC ---
     if (rawFormState == -1) {
       _consecutiveBadFrames++;
-      _consecutiveGoodFrames = 0;
-      if (_consecutiveBadFrames >= _debounceThreshold) {
+      if (_consecutiveGoodFrames > 0) _consecutiveGoodFrames--;
+      
+      if (_consecutiveBadFrames >= _failThreshold) {
         _publishedFormState = -1;
         _publishedFormError = rawFormError;
-        _publishedFaultyJoints = Set.from(rawFaultyJoints);
-        _hasFormBrokenThisRep = true; 
+        _publishedFaultyJoints.addAll(rawFaultyJoints);
+        
+        if (ttsVariations.isNotEmpty) {
+           AudioService.instance.speakCorrection(ttsVariations);
+        }
+        
+        if (elbowAngle < 120.0 || _isDown) {
+          _hasFormBrokenThisRep = true; 
+        }
       }
     } else {
       _consecutiveGoodFrames++;
-      _consecutiveBadFrames = 0;
-      if (_consecutiveGoodFrames >= _debounceThreshold) {
+      if (_consecutiveBadFrames > 0) _consecutiveBadFrames--;
+      
+      if (_consecutiveGoodFrames >= _recoverThreshold) {
         _publishedFormState = 1;
         _publishedFormError = "";
         _publishedFaultyJoints = {};
       }
+    }
+    
+    // Bicep Amnesia Protocol
+    if (elbowAngle >= 150.0 && rawFormState == 1) {
+      _hasFormBrokenThisRep = false; 
     }
 
     bool goodRep = false;
