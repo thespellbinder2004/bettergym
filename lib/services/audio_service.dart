@@ -5,10 +5,10 @@ class AudioService {
   static final AudioService instance = AudioService._internal();
   AudioService._internal();
 
-  // NEW: Dedicated, permanent audio channels to prevent memory leaks
   final AudioPlayer _chimePlayer = AudioPlayer();
   final AudioPlayer _tickPlayer = AudioPlayer();
   final AudioPlayer _beepPlayer = AudioPlayer();
+  final AudioPlayer _uiPlayer = AudioPlayer(); // NEW: Dedicated UI Channel
 
   bool _masterSoundEnabled = true;
   bool _leadInBeepsEnabled = true;
@@ -24,21 +24,19 @@ class AudioService {
     _metronomeEnabled = prefs.getBool('metronome') ?? true;      
     _volume = prefs.getDouble('audio_volume') ?? 0.5;
 
-    // Pre-apply volume to all dedicated channels
     await _chimePlayer.setVolume(_volume);
     await _tickPlayer.setVolume(_volume);
     await _beepPlayer.setVolume(_volume);
+    await _uiPlayer.setVolume(_volume); // NEW
   }
 
   Future<void> _playOnChannel(AudioPlayer channel, String fileName) async {
     if (!_masterSoundEnabled) return; 
     
-    // If the channel is already playing a sound, stop it to prevent overlap clipping
     if (channel.state == PlayerState.playing) {
       await channel.stop();
     }
     
-    // Reuse the same memory address to play the sound
     await channel.play(AssetSource('sounds/$fileName'));
   }
 
@@ -56,5 +54,22 @@ class AudioService {
 
   void playGoBeep() {
     if (_leadInBeepsEnabled) _playOnChannel(_beepPlayer, 'go.mp3');
+  }
+
+  // --- NEW: UI SOUND TRIGGERS ---
+  void playPauseSound() {
+    _playOnChannel(_uiPlayer, 'pause.mp3');
+  }
+
+  void playResumeSound() {
+    _playOnChannel(_uiPlayer, 'resume.mp3');
+  }
+
+  void playFinishSound() {
+    _playOnChannel(_uiPlayer, 'finish.mp3');
+  }
+
+  void playAbortSound() {
+    _playOnChannel(_uiPlayer, 'abort.mp3');
   }
 }

@@ -120,6 +120,8 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
     _toastTimer?.cancel();
     _exitTimer?.cancel();
 
+    AudioService.instance.playPauseSound(); // NEW
+
     setState(() {
       _previousPhase = _currentPhase;
       _currentPhase = SessionPhase.paused;
@@ -128,6 +130,8 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
 
   void _resumeSession() {
     if (_currentPhase != SessionPhase.paused || _previousPhase == null) return;
+
+    AudioService.instance.playResumeSound(); // NEW
 
     setState(() {
       _currentPhase = _previousPhase!;
@@ -251,7 +255,8 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
       _startRestPhase();
     } else {
       setState(() => _currentPhase = SessionPhase.finished);
-      _exitSession(isCompleted: true); // THEY ACTUALLY FINISHED
+      AudioService.instance.playFinishSound(); // NEW
+      _exitSession(isCompleted: true);
     }
   }
 
@@ -323,7 +328,7 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
       final camera = availableCams.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => availableCams.first);
       _isFrontCamera = camera.lensDirection == CameraLensDirection.front;
       final controller = CameraController(
-        camera, ResolutionPreset.medium, enableAudio: false, fps: 30,
+        camera, ResolutionPreset.high, enableAudio: false, fps: 30,
         imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
       );
 
@@ -472,9 +477,12 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
               ),
               const SizedBox(height: 32),
               TextButton(
-                onPressed: () => _exitSession(isCompleted: false), // THEY QUIT EARLY
+                onPressed: () {
+                  AudioService.instance.playAbortSound(); // NEW
+                  _exitSession(isCompleted: false);
+                },
                 child: const Text("END SESSION EARLY", style: TextStyle(color: neonRed, fontSize: 14, letterSpacing: 1.5)),
-            )
+              )
             ],
           ),
         ),
