@@ -55,6 +55,7 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
   Timer? _phaseTimer;
 
   int _repsOrSecondsRemaining = 0;
+  int _badRepsSessionCount = 0;
   int _formState = 0;
   String _feedbackMessage = "Position yourself in frame.";
   double _formScore = 1.0; // NEW: Continuous percentage for thermometer
@@ -361,12 +362,20 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
             _formScore = analysis['formScore'] ?? 1.0;     
             _faultyJoints = analysis['faultyJoints'] ?? {}; 
 
-            if (analysis['repTriggered'] == true) {
+            // Strict Validation Routing
+            if (analysis['goodRepTriggered'] == true) {
               _repsOrSecondsRemaining--;
               AudioService.instance.playChime();
+              
               if (_repsOrSecondsRemaining <= 0) {
                 _completeExercise();
               }
+            } else if (analysis['badRepTriggered'] == true) {
+              // The user finished the motion, but their form broke.
+              _badRepsSessionCount++;
+              
+              // Flash a warning on screen without decrementing the counter
+              _triggerToast("Invalid Rep: Watch your form!", -1);
             }
           });
         }
