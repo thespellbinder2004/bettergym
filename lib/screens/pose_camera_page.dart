@@ -58,8 +58,8 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
   int _badRepsSessionCount = 0;
   int _formState = 0;
   String _feedbackMessage = "Position yourself in frame.";
-  double _formScore = 1.0; // NEW: Continuous percentage for thermometer
-  Set<PoseLandmarkType> _faultyJoints = {}; // NEW: Limb-specific failure tracking
+  double _formScore = 1.0; 
+  Set<PoseLandmarkType> _faultyJoints = {}; 
   
   bool _showToast = false;
   Timer? _toastTimer;
@@ -170,7 +170,6 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
 
   void _startPrepPhase() {
     final currentExerciseName = widget.routine.isNotEmpty ? widget.routine[_currentExerciseIndex].name : "the exercise";
-    // Detect if we need side-profile warnings
     final isPushUp = currentExerciseName.toLowerCase().contains("push");
 
     setState(() {
@@ -278,7 +277,6 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
           _countdownSeconds--;
           
           if ((_currentPhase == SessionPhase.prep || _currentPhase == SessionPhase.rest)) {
-            // NEW: 10-Second Warning
             if (_countdownSeconds == 10) {
               AudioService.instance.speakPriority([
                 "Ten seconds remaining.",
@@ -397,7 +395,6 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
         final leftAnkle = landmarks[PoseLandmarkType.leftAnkle];
         final rightAnkle = landmarks[PoseLandmarkType.rightAnkle];
 
-        // Ensure we see the head and at least one foot
         if (nose != null && (leftAnkle != null || rightAnkle != null)) {
           if (nose.likelihood > 0.5 && (leftAnkle!.likelihood > 0.5 || rightAnkle!.likelihood > 0.5)) {
             targetLocked = true;
@@ -424,7 +421,6 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
             _formScore = analysis['formScore'] ?? 1.0;     
             _faultyJoints = analysis['faultyJoints'] ?? {}; 
 
-            // Strict Validation Routing
             if (analysis['goodRepTriggered'] == true) {
               _repsOrSecondsRemaining--;
               AudioService.instance.playChime();
@@ -433,10 +429,7 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
                 _completeExercise();
               }
             } else if (analysis['badRepTriggered'] == true) {
-              // The user finished the motion, but their form broke.
               _badRepsSessionCount++;
-              
-              // Flash a warning on screen without decrementing the counter
               _triggerToast("Invalid Rep: Watch your form!", -1);
             }
           });
@@ -713,97 +706,79 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
         final scale = _calculateScale(context, previewRatio);
         final currentExercise = widget.routine.isNotEmpty ? widget.routine[_currentExerciseIndex] : null;
 
-        return Scaffold(
-          backgroundColor: Colors.black,
-          body: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapDown: _handleTapDown,
-            onTapUp: (_) => _handleTapCancel(),
-            onTapCancel: _handleTapCancel,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Transform.scale(
-                  scale: scale,
-                  child: Center(
-                    child: AspectRatio(
-                      aspectRatio: previewRatio,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          CameraPreview(_cameraController!),
-                          ValueListenableBuilder<PoseOverlayData?>(
-                            valueListenable: _overlayNotifier,
-                            builder: (context, overlay, child) {
-                              if (overlay == null || _currentPhase == SessionPhase.paused) return const SizedBox.shrink();
-                              return RepaintBoundary(
-                                child: CustomPaint(
-                                  painter: PosePainter(
-                                    poses: overlay.poses,
-                                    imageSize: overlay.imageSize,
-                                    rotation: overlay.rotation,
-                                    isFrontCamera: overlay.isFrontCamera,
-                                    formState: overlay.formState,
-                                    isDevicePortrait: isPortrait,
-                                    activeJoints: overlay.activeJoints, 
-                                    faultyJoints: overlay.faultyJoints, 
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
+        // --- BACK BUTTON TRAP (PopScope) ---
+        return PopScope(
+          canPop: false, 
+          onPopInvokedWithResult: (didPop, result) async {
+            if (didPop) return;
+            
+            _pauseSession();
+            
+            final bool? shouldAbort = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                backgroundColor: darkSlate,
+                title: const Text('ABORT SESSION?', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                content: const Text('Are you sure you want to end this workout early? Your progress will be saved as an incomplete session.', style: TextStyle(color: Colors.grey, height: 1.5)),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('RESUME', style: TextStyle(color: mintGreen)),
                   ),
-                ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: neonRed, foregroundColor: Colors.white),
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('ABORT', style: TextStyle(fontWeight: FontWeight.bold)),
+                  )
+                ],
+              ),
+            );
 
-                _buildTransitionOverlay(),
-
-                if (_currentPhase != SessionPhase.paused)
-                  SafeArea(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 16.0),
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
+            if (shouldAbort == true) {
+              AudioService.instance.playAbortSound();
+              _exitSession(isCompleted: false);
+            } else {
+              _resumeSession();
+            }
+          },
+          child: Scaffold(
+            backgroundColor: Colors.black,
+            body: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown: _handleTapDown,
+              onTapUp: (_) => _handleTapCancel(),
+              onTapCancel: _handleTapCancel,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Transform.scale(
+                    scale: scale,
+                    child: Center(
+                      child: AspectRatio(
+                        aspectRatio: previewRatio,
+                        child: Stack(
+                          fit: StackFit.expand,
                           children: [
-                            if (_currentPhase == SessionPhase.active && currentExercise != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                                decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(20)),
-                                child: Text(
-                                  currentExercise.name.toUpperCase(),
-                                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2.0),
-                                ),
-                              ),
-                            const SizedBox(height: 12),
-                            AnimatedOpacity(
-                              opacity: _showToast ? 1.0 : 0.0,
-                              duration: const Duration(milliseconds: 300),
-                              child: Container(
-                                margin: const EdgeInsets.symmetric(horizontal: 20),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                decoration: BoxDecoration(
-                                  color: darkSlate.withOpacity(0.9),
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                      color: _formState == -1 ? neonRed : (_formState == 1 ? mintGreen : Colors.transparent),
-                                      width: 2),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                      _formState == -1 ? Icons.warning_amber_rounded : (_formState == 1 ? Icons.check_circle : Icons.info_outline),
-                                      color: _formState == -1 ? neonRed : (_formState == 1 ? mintGreen : Colors.white),
+                            CameraPreview(_cameraController!),
+                            ValueListenableBuilder<PoseOverlayData?>(
+                              valueListenable: _overlayNotifier,
+                              builder: (context, overlay, child) {
+                                if (overlay == null || _currentPhase == SessionPhase.paused) return const SizedBox.shrink();
+                                return RepaintBoundary(
+                                  child: CustomPaint(
+                                    painter: PosePainter(
+                                      poses: overlay.poses,
+                                      imageSize: overlay.imageSize,
+                                      rotation: overlay.rotation,
+                                      isFrontCamera: overlay.isFrontCamera,
+                                      formState: overlay.formState,
+                                      isDevicePortrait: isPortrait,
+                                      activeJoints: overlay.activeJoints, 
+                                      faultyJoints: overlay.faultyJoints, 
                                     ),
-                                    const SizedBox(width: 12),
-                                    Flexible(child: Text(_feedbackMessage, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                                  ],
-                                ),
-                              ),
+                                  ),
+                                );
+                              },
                             ),
                           ],
                         ),
@@ -811,98 +786,150 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
                     ),
                   ),
 
-                if (_currentPhase != SessionPhase.paused && _currentPhase != SessionPhase.acquisition)
-                  Positioned(
-                    top: isPortrait ? 60 : 20,
-                    right: 20,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: _pauseSession,
-                        borderRadius: BorderRadius.circular(30),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.6),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: mintGreen.withOpacity(0.5), width: 2),
+                  _buildTransitionOverlay(),
+
+                  if (_currentPhase != SessionPhase.paused)
+                    SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 16.0),
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_currentPhase == SessionPhase.active && currentExercise != null)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(20)),
+                                  child: Text(
+                                    currentExercise.name.toUpperCase(),
+                                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2.0),
+                                  ),
+                                ),
+                              const SizedBox(height: 12),
+                              AnimatedOpacity(
+                                opacity: _showToast ? 1.0 : 0.0,
+                                duration: const Duration(milliseconds: 300),
+                                child: Container(
+                                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: darkSlate.withOpacity(0.9),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                        color: _formState == -1 ? neonRed : (_formState == 1 ? mintGreen : Colors.transparent),
+                                        width: 2),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        _formState == -1 ? Icons.warning_amber_rounded : (_formState == 1 ? Icons.check_circle : Icons.info_outline),
+                                        color: _formState == -1 ? neonRed : (_formState == 1 ? mintGreen : Colors.white),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Flexible(child: Text(_feedbackMessage, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          child: const Icon(Icons.pause, color: mintGreen, size: 28),
                         ),
                       ),
                     ),
-                  ),
 
-                // NEW: The Thermometer Form Meter
-                if (_currentPhase == SessionPhase.active && currentExercise != null && _currentPhase != SessionPhase.paused)
-                  Positioned(
-                    right: 20,
-                    top: isPortrait ? MediaQuery.of(context).size.height * 0.25 : 80,
-                    bottom: isPortrait ? MediaQuery.of(context).size.height * 0.25 : 80,
-                    child: Container(
-                      width: 16,
-                      decoration: BoxDecoration(
-                        color: darkSlate.withOpacity(0.8),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.grey.withOpacity(0.3), width: 2),
+                  if (_currentPhase != SessionPhase.paused && _currentPhase != SessionPhase.acquisition)
+                    Positioned(
+                      top: isPortrait ? 60 : 20,
+                      right: 20,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: _pauseSession,
+                          borderRadius: BorderRadius.circular(30),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.6),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: mintGreen.withOpacity(0.5), width: 2),
+                            ),
+                            child: const Icon(Icons.pause, color: mintGreen, size: 28),
+                          ),
+                        ),
                       ),
-                      alignment: Alignment.bottomCenter,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 100),
-                        height: (isPortrait ? MediaQuery.of(context).size.height * 0.5 : MediaQuery.of(context).size.height - 160) * _formScore,
+                    ),
+
+                  if (_currentPhase == SessionPhase.active && currentExercise != null && _currentPhase != SessionPhase.paused)
+                    Positioned(
+                      right: 20,
+                      top: isPortrait ? MediaQuery.of(context).size.height * 0.25 : 80,
+                      bottom: isPortrait ? MediaQuery.of(context).size.height * 0.25 : 80,
+                      child: Container(
+                        width: 16,
                         decoration: BoxDecoration(
-                          color: Color.lerp(neonRed, mintGreen, _formScore),
-                          borderRadius: BorderRadius.circular(8),
+                          color: darkSlate.withOpacity(0.8),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey.withOpacity(0.3), width: 2),
+                        ),
+                        alignment: Alignment.bottomCenter,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 100),
+                          height: (isPortrait ? MediaQuery.of(context).size.height * 0.5 : MediaQuery.of(context).size.height - 160) * _formScore,
+                          decoration: BoxDecoration(
+                            color: Color.lerp(neonRed, mintGreen, _formScore),
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [
+                              BoxShadow(color: Color.lerp(neonRed, mintGreen, _formScore)!.withOpacity(0.5), blurRadius: 8)
+                            ]
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  if (_currentPhase == SessionPhase.active && currentExercise != null && _currentPhase != SessionPhase.paused)
+                    Positioned(
+                      bottom: isPortrait ? 40 : null,
+                      top: isPortrait ? null : MediaQuery.of(context).size.height / 2 - 90,
+                      left: 20,
+                      child: Container(
+                        width: 180,
+                        height: 180,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.black.withOpacity(0.3),
+                          border: Border.all(
+                            color: _formState == 1 ? mintGreen.withOpacity(0.8) : (_formState == -1 ? neonRed : Colors.grey.withOpacity(0.3)), 
+                            width: 4
+                          ),
                           boxShadow: [
-                            BoxShadow(color: Color.lerp(neonRed, mintGreen, _formScore)!.withOpacity(0.5), blurRadius: 8)
+                            if (_formState == 1) BoxShadow(color: mintGreen.withOpacity(0.4), blurRadius: 20, spreadRadius: 2),
+                            if (_formState == -1) BoxShadow(color: neonRed.withOpacity(0.6), blurRadius: 30, spreadRadius: 8),
                           ]
                         ),
-                      ),
-                    ),
-                  ),
-
-                if (_currentPhase == SessionPhase.active && currentExercise != null && _currentPhase != SessionPhase.paused)
-                  Positioned(
-                    bottom: isPortrait ? 40 : null,
-                    top: isPortrait ? null : MediaQuery.of(context).size.height / 2 - 90,
-                    left: 20,
-                    child: Container(
-                      width: 180,
-                      height: 180,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.black.withOpacity(0.3),
-                        // Glows red if form breaks, green if perfect, grey if inactive
-                        border: Border.all(
-                          color: _formState == 1 ? mintGreen.withOpacity(0.8) : (_formState == -1 ? neonRed : Colors.grey.withOpacity(0.3)), 
-                          width: 4
-                        ),
-                        boxShadow: [
-                          if (_formState == 1) BoxShadow(color: mintGreen.withOpacity(0.4), blurRadius: 20, spreadRadius: 2),
-                          if (_formState == -1) BoxShadow(color: neonRed.withOpacity(0.6), blurRadius: 30, spreadRadius: 8),
-                        ]
-                      ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 200),
-                          transitionBuilder: (Widget child, Animation<double> animation) {
-                            return ScaleTransition(scale: animation, child: child);
-                          },
-                          child: Text(
-                            _repsOrSecondsRemaining.toString(),
-                            key: ValueKey<int>(_repsOrSecondsRemaining),
-                            style: const TextStyle(color: Colors.white, fontSize: 80, fontWeight: FontWeight.bold, height: 1.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            transitionBuilder: (Widget child, Animation<double> animation) {
+                              return ScaleTransition(scale: animation, child: child);
+                            },
+                            child: Text(
+                              _repsOrSecondsRemaining.toString(),
+                              key: ValueKey<int>(_repsOrSecondsRemaining),
+                              style: const TextStyle(color: Colors.white, fontSize: 80, fontWeight: FontWeight.bold, height: 1.0),
+                            ),
                           ),
+                          Text(currentExercise.isDuration ? 'SEC' : 'REPS',
+                              style: const TextStyle(color: Colors.grey, fontSize: 16, letterSpacing: 2.0)),
+                          ],
                         ),
-                        Text(currentExercise.isDuration ? 'SEC' : 'REPS',
-                            style: const TextStyle(color: Colors.grey, fontSize: 16, letterSpacing: 2.0)),
-                        ],
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -960,7 +987,6 @@ class PosePainter extends CustomPainter {
     final solidPointPaint = Paint()..color = Colors.white..style = PaintingStyle.fill;
     final inactivePointPaint = Paint()..color = Colors.grey.withOpacity(0.5)..style = PaintingStyle.fill;
 
-    // Active lines are always Green. Faulty lines are Red. Inactive are Grey.
     final activeLinePaint = Paint()..color = mintGreen.withOpacity(0.8)..strokeWidth = 6..strokeCap = StrokeCap.round..style = PaintingStyle.stroke;
     final faultyLinePaint = Paint()..color = neonRed..strokeWidth = 8..strokeCap = StrokeCap.round..style = PaintingStyle.stroke;
     final inactiveLinePaint = Paint()..color = Colors.grey.withOpacity(0.3)..strokeWidth = 4..strokeCap = StrokeCap.round..style = PaintingStyle.stroke;
@@ -977,8 +1003,14 @@ class PosePainter extends CustomPainter {
         final point = _mapPoint(Offset(landmark.x, landmark.y), size, absoluteImageWidth, absoluteImageHeight);
         
         if (activeJoints.isEmpty || activeJoints.contains(type)) {
-          canvas.drawCircle(point, 18, glowPaint);
-          canvas.drawCircle(point, 8, solidPointPaint);
+          // NEW: Make the nose (head) significantly larger
+          if (type == PoseLandmarkType.nose) {
+            canvas.drawCircle(point, 30, glowPaint); 
+            canvas.drawCircle(point, 16, solidPointPaint);
+          } else {
+            canvas.drawCircle(point, 18, glowPaint);
+            canvas.drawCircle(point, 8, solidPointPaint);
+          }
         } else {
           canvas.drawCircle(point, 6, inactivePointPaint);
         }
@@ -994,7 +1026,6 @@ class PosePainter extends CustomPainter {
         bool isFaulty = faultyJoints.contains(a) && faultyJoints.contains(b);
         bool isActive = activeJoints.isEmpty || (activeJoints.contains(a) && activeJoints.contains(b));
 
-        // Limb-specific rendering
         if (isFaulty) {
           canvas.drawLine(start, end, faultyLinePaint);
         } else if (isActive) {
@@ -1010,15 +1041,34 @@ class PosePainter extends CustomPainter {
       drawLine(PoseLandmarkType.leftElbow, PoseLandmarkType.leftWrist);
       drawLine(PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow);
       drawLine(PoseLandmarkType.rightElbow, PoseLandmarkType.rightWrist);
-      // Torso
+      
+      // Torso & Legs
       drawLine(PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip);
       drawLine(PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip);
       drawLine(PoseLandmarkType.leftHip, PoseLandmarkType.rightHip);
-      // Legs
       drawLine(PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee);
       drawLine(PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle);
       drawLine(PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee);
       drawLine(PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle);
+
+      // NEW: Draw the Neck Line connecting Nose to Mid-Shoulder
+      final nose = landmarks[PoseLandmarkType.nose];
+      final lShoulder = landmarks[PoseLandmarkType.leftShoulder];
+      final rShoulder = landmarks[PoseLandmarkType.rightShoulder];
+      
+      if (nose != null && lShoulder != null && rShoulder != null) {
+        final nosePoint = _mapPoint(Offset(nose.x, nose.y), size, absoluteImageWidth, absoluteImageHeight);
+        final midShoulderX = (lShoulder.x + rShoulder.x) / 2;
+        final midShoulderY = (lShoulder.y + rShoulder.y) / 2;
+        final midShoulderPoint = _mapPoint(Offset(midShoulderX, midShoulderY), size, absoluteImageWidth, absoluteImageHeight);
+        
+        // Draw the neck in active color if shoulders are active
+        if (activeJoints.contains(PoseLandmarkType.leftShoulder)) {
+          canvas.drawLine(nosePoint, midShoulderPoint, activeLinePaint);
+        } else {
+          canvas.drawLine(nosePoint, midShoulderPoint, inactiveLinePaint);
+        }
+      }
 
       final bodyNodes = [
         PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder,
