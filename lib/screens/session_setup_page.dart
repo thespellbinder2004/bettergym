@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../main.dart'; // Keep your theme colors (mintGreen, darkSlate, neonRed)
+import '../main.dart'; // Inherits your existing theme colors
 import 'pose_camera_page.dart';
 
 class SessionSetupPage extends StatefulWidget {
@@ -15,7 +15,7 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
   List<WorkoutSet> _routine = [];
   bool _isLoading = true;
 
-  // The Cleansed Exercise Database
+  // 1. Cleansed Exercise List
   final List<String> _availableExercises = [
     'Push Up',
     'Bench Dip',
@@ -30,8 +30,7 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
     _loadRoutine();
   }
 
-  // --- PERSISTENCE LOGIC ---
-  
+  // --- PERSISTENCE LOGIC (Loads last setup) ---
   Future<void> _loadRoutine() async {
     final prefs = await SharedPreferences.getInstance();
     final String? savedRoutineStr = prefs.getString('saved_routine');
@@ -58,15 +57,35 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
     await prefs.setString('saved_routine', encodedRoutine);
   }
 
-  // --- HELPER LOGIC ---
-
-  bool _isDurationBased(String name) {
-    // Strict logic: Only Plank is duration-based. Add more here later if needed (e.g., Wall Sit).
-    return name.toLowerCase() == 'plank';
+  // --- DELETE CONFIRMATION ---
+  void _confirmDelete(int index) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('Delete Exercise?', style: TextStyle(color: Colors.white)),
+        content: Text('Remove ${_routine[index].name} from your session?', style: const TextStyle(color: Colors.grey)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _routine.removeAt(index);
+              });
+              _saveRoutine();
+              Navigator.pop(context);
+            },
+            child: const Text('DELETE', style: TextStyle(color: Colors.redAccent)),
+          )
+        ],
+      ),
+    );
   }
 
-  // --- UI LOGIC ---
-
+  // --- ADD/EDIT DIALOG (No more Duration Checkbox) ---
   void _showAddEditDialog({WorkoutSet? existingSet, int? index}) {
     String selectedName = existingSet?.name ?? _availableExercises.first;
     TextEditingController targetController = TextEditingController(text: existingSet?.target.toString() ?? '10');
@@ -76,26 +95,19 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            bool isDuration = _isDurationBased(selectedName);
+            // 2. Auto-Duration Logic
+            bool isDuration = selectedName.toLowerCase() == 'plank';
 
             return AlertDialog(
-              backgroundColor: darkSlate,
-              title: Text(existingSet == null ? 'ADD EXERCISE' : 'EDIT EXERCISE', 
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+              backgroundColor: Colors.grey[900],
+              title: Text(existingSet == null ? 'Add Exercise' : 'Edit Exercise', style: const TextStyle(color: Colors.white)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Strict Dropdown
                   DropdownButtonFormField<String>(
                     value: selectedName,
-                    dropdownColor: darkSlate,
-                    style: const TextStyle(color: mintGreen, fontSize: 16, fontWeight: FontWeight.bold),
-                    decoration: const InputDecoration(
-                      labelText: 'Exercise',
-                      labelStyle: TextStyle(color: Colors.grey),
-                      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
-                      focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: mintGreen)),
-                    ),
+                    dropdownColor: Colors.grey[850],
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
                     items: _availableExercises.map((name) {
                       return DropdownMenuItem(value: name, child: Text(name));
                     }).toList(),
@@ -103,27 +115,25 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                       if (val != null) {
                         setDialogState(() {
                           selectedName = val;
-                          isDuration = _isDurationBased(val);
-                          // Optional: Auto-adjust target defaults when switching types
+                          isDuration = selectedName.toLowerCase() == 'plank';
+                          
+                          // Smart defaults: If they switch to plank, default to 60s. Otherwise 10 reps.
                           if (isDuration && targetController.text == '10') targetController.text = '60';
                           if (!isDuration && targetController.text == '60') targetController.text = '10';
                         });
                       }
                     },
                   ),
-                  const SizedBox(height: 24),
-                  
-                  // Dynamic Target Field (Automatically changes label based on selection)
+                  const SizedBox(height: 16),
                   TextField(
                     controller: targetController,
                     keyboardType: TextInputType.number,
-                    style: const TextStyle(color: Colors.white, fontSize: 24),
+                    style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
-                      labelText: isDuration ? 'Target Seconds' : 'Target Reps',
+                      // Dynamically changes text based on exercise type
+                      labelText: isDuration ? 'Target (Seconds)' : 'Target (Reps)',
                       labelStyle: const TextStyle(color: Colors.grey),
                       enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
-                      focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: mintGreen)),
-                      suffixIcon: Icon(isDuration ? Icons.timer : Icons.repeat, color: mintGreen),
                     ),
                   ),
                 ],
@@ -134,7 +144,7 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                   child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
                 ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: mintGreen, foregroundColor: Colors.black),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.tealAccent, foregroundColor: Colors.black),
                   onPressed: () {
                     final target = int.tryParse(targetController.text) ?? (isDuration ? 60 : 10);
                     final newSet = WorkoutSet(name: selectedName, target: target, isDuration: isDuration);
@@ -147,10 +157,10 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                       }
                     });
                     
-                    _saveRoutine(); // Save to memory
+                    _saveRoutine(); // Save to memory instantly
                     Navigator.pop(context);
                   },
-                  child: Text(existingSet == null ? 'ADD' : 'SAVE', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  child: Text(existingSet == null ? 'ADD' : 'SAVE'),
                 )
               ],
             );
@@ -160,94 +170,42 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
     );
   }
 
-void _confirmRemoveSet(int index) {
-    final item = _routine[index];
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: darkSlate,
-        title: const Text('DELETE EXERCISE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-        content: Text('Are you sure you want to remove ${item.name.toUpperCase()} from your routine?', style: const TextStyle(color: Colors.grey, height: 1.5)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: neonRed, foregroundColor: Colors.white),
-            onPressed: () {
-              setState(() {
-                _routine.removeAt(index);
-              });
-              _saveRoutine(); // Save new state to persistent memory
-              Navigator.pop(context);
-            },
-            child: const Text('DELETE', style: TextStyle(fontWeight: FontWeight.bold)),
-          )
-        ],
-      ),
-    );
-  }
-  
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: mintGreen)));
+      return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
-        title: const Text('SESSION SETUP', style: TextStyle(color: mintGreen, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings, color: Colors.grey),
-            onPressed: () {
-              // TODO: Route to settings page
-            },
-          )
-        ],
+        title: const Text('Session Setup', style: TextStyle(color: Colors.white)),
       ),
       body: _routine.isEmpty 
-          ? const Center(
-              child: Text(
-                "NO EXERCISES LOADED.\nTAP '+' TO BUILD YOUR ROUTINE.", 
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, fontSize: 16, letterSpacing: 1.5, height: 1.5)
-              )
+          ? Center(
+              // 4. Clean Empty State (Just the Add Button)
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.tealAccent,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+                icon: const Icon(Icons.add),
+                label: const Text('ADD EXERCISE', style: TextStyle(fontWeight: FontWeight.bold)),
+                onPressed: () => _showAddEditDialog(),
+              ),
             )
-          : ReorderableListView.builder(
-              padding: const EdgeInsets.only(bottom: 100, top: 16),
+          : ListView.builder(
               itemCount: _routine.length,
-              onReorder: (oldIndex, newIndex) {
-                setState(() {
-                  if (newIndex > oldIndex) newIndex -= 1;
-                  final item = _routine.removeAt(oldIndex);
-                  _routine.insert(newIndex, item);
-                });
-                _saveRoutine(); // Save new order to memory
-              },
               itemBuilder: (context, index) {
                 final item = _routine[index];
                 return Card(
-                  key: ValueKey(item.hashCode), // Needed for ReorderableListView
-                  color: darkSlate,
+                  color: Colors.grey[900],
                   margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    title: Text(item.name.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-                    subtitle: Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Row(
-                        children: [
-                          Icon(item.isDuration ? Icons.timer : Icons.repeat, color: mintGreen, size: 16),
-                          const SizedBox(width: 8),
-                          Text('${item.target} ${item.isDuration ? "SEC" : "REPS"}', style: const TextStyle(color: mintGreen, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
+                    title: Text(item.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    subtitle: Text('${item.target} ${item.isDuration ? "Seconds" : "Reps"}', style: const TextStyle(color: Colors.tealAccent)),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -255,50 +213,48 @@ void _confirmRemoveSet(int index) {
                           icon: const Icon(Icons.edit, color: Colors.grey),
                           onPressed: () => _showAddEditDialog(existingSet: item, index: index),
                         ),
+                        // 5. Delete Confirmation Wire-up
                         IconButton(
-                          icon: const Icon(Icons.delete_outline, color: neonRed),
-                          onPressed: () => _confirmRemoveSet(index), // <-- UPDATED THIS LINE
+                          icon: const Icon(Icons.delete, color: Colors.redAccent),
+                          onPressed: () => _confirmDelete(index),
                         ),
-                        const Icon(Icons.drag_handle, color: Colors.grey),
                       ],
                     ),
                   ),
                 );
               },
             ),
-      floatingActionButton: Column(
+      floatingActionButton: _routine.isEmpty ? null : Column(
         mainAxisAlignment: MainAxisAlignment.end,
-        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           FloatingActionButton(
             heroTag: 'add_btn',
-            backgroundColor: darkSlate,
-            foregroundColor: mintGreen,
+            backgroundColor: Colors.grey[800],
+            foregroundColor: Colors.white,
             onPressed: () => _showAddEditDialog(),
             child: const Icon(Icons.add),
           ),
           const SizedBox(height: 16),
-          if (_routine.isNotEmpty)
-            FloatingActionButton.extended(
-              heroTag: 'start_btn',
-              backgroundColor: mintGreen,
-              foregroundColor: Colors.black,
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => PoseCameraPage(routine: _routine)),
-                );
-              },
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('START', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2.0)),
-            ),
+          FloatingActionButton.extended(
+            heroTag: 'start_btn',
+            backgroundColor: Colors.tealAccent,
+            foregroundColor: Colors.black,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => PoseCameraPage(routine: _routine)),
+              );
+            },
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('START SESSION', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
         ],
       ),
     );
   }
 }
 
-// --- WORKOUT SET MODEL (With JSON Serialization) ---
+// --- WORKOUT SET MODEL (With JSON Serialization for Memory) ---
 class WorkoutSet {
   String name;
   int target;
@@ -310,14 +266,12 @@ class WorkoutSet {
     this.isDuration = false,
   });
 
-  // Convert to JSON to save in memory
   Map<String, dynamic> toJson() => {
     'name': name,
     'target': target,
     'isDuration': isDuration,
   };
 
-  // Build from JSON when loading from memory
   factory WorkoutSet.fromJson(Map<String, dynamic> json) => WorkoutSet(
     name: json['name'] as String,
     target: json['target'] as int,
