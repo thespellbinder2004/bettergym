@@ -7,7 +7,6 @@ import 'main_layout.dart';
 import 'register_page.dart';
 
 class LoginPage extends StatefulWidget {
-  // CUT 1 & 2: Constructor is clean. No cameras required.
   const LoginPage({super.key});
 
   @override
@@ -62,7 +61,6 @@ class _LoginPageState extends State<LoginPage> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            // CUT 3: Removed cameras parameter here
             builder: (_) => const MainLayout(),
           ),
         );
@@ -217,7 +215,6 @@ class _LoginPageState extends State<LoginPage> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                // CUT 4: Removed cameras parameter here
                                 builder: (_) => const RegisterPage(),
                               ),
                             );

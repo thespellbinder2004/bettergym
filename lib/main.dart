@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // NEW: Required for memory reading
 
 import 'screens/login_page.dart';
-import 'services/hardware_service.dart'; // NEW
+import 'screens/main_layout.dart'; // NEW: Your actual home wrapper
+import 'services/hardware_service.dart';
 
 // --- GLOBAL COLORS ---
 const Color mintGreen = Color(0xFF00FFCC);
@@ -13,15 +15,21 @@ Future<void> main() async {
   // Ensure the engine is running before talking to native hardware
   WidgetsFlutterBinding.ensureInitialized();
   
-  // NEW: Boot the hardware service globally
+  // Boot the hardware service globally
   await HardwareService.instance.init(); 
 
-  runApp(const MyApp());
+  // CHECK PERSISTENT MEMORY
+  final prefs = await SharedPreferences.getInstance();
+  final bool isLoggedIn = prefs.getBool('logged_in') ?? false; // Matches your login page key
+
+  // Boot the app and pass the state
+  runApp(MyApp(isLoggedIn: isLoggedIn));
 }
 
 class MyApp extends StatelessWidget {
-  // NEW: Removed the camera requirements from the constructor
-  const MyApp({super.key});
+  final bool isLoggedIn; // State variable to catch memory
+
+  const MyApp({super.key, required this.isLoggedIn});
 
   @override
   Widget build(BuildContext context) {
@@ -36,8 +44,8 @@ class MyApp extends StatelessWidget {
         ),
         fontFamily: 'Roboto', 
       ),
-      // NEW: Removed cameras parameter
-      home: const LoginPage(), 
+      // THE ROUTER: Skip login if memory says true
+      home: isLoggedIn ? const MainLayout() : const LoginPage(), 
     );
   }
 }
