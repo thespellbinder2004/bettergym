@@ -6,7 +6,7 @@ class BiomechanicsEngine {
   BiomechanicsEngine._internal();
 
   bool _isDown = false;
-  bool _hasFormBrokenThisRep = false; // NEW: The Tainted Rep tracker
+  bool _hasFormBrokenThisRep = false;
 
   void reset() {
     _isDown = false;
@@ -26,8 +26,8 @@ class BiomechanicsEngine {
 
   Map<String, dynamic> processFrame({required Pose pose, required String exerciseName}) {
     Map<String, dynamic> result = {
-      'goodRepTriggered': false, // NEW
-      'badRepTriggered': false,  // NEW
+      'goodRepTriggered': false, 
+      'badRepTriggered': false,  
       'formState': 0,
       'feedback': "Position yourself in frame.",
       'activeJoints': <PoseLandmarkType>{},
@@ -66,7 +66,7 @@ class BiomechanicsEngine {
     final elbow = isLeftVisible ? landmarks[PoseLandmarkType.leftElbow] : landmarks[PoseLandmarkType.rightElbow];
     final wrist = isLeftVisible ? landmarks[PoseLandmarkType.leftWrist] : landmarks[PoseLandmarkType.rightWrist];
     final hip = isLeftVisible ? landmarks[PoseLandmarkType.leftHip] : landmarks[PoseLandmarkType.rightHip];
-    final knee = isLeftVisible ? landmarks[PoseLandmarkType.leftKnee] : landmarks[PoseLandmarkType.rightKnee]; // NEW
+    final knee = isLeftVisible ? landmarks[PoseLandmarkType.leftKnee] : landmarks[PoseLandmarkType.rightKnee]; 
     final ankle = isLeftVisible ? landmarks[PoseLandmarkType.leftAnkle] : landmarks[PoseLandmarkType.rightAnkle];
 
     final activeJoints = <PoseLandmarkType>{
@@ -83,19 +83,33 @@ class BiomechanicsEngine {
       return {'goodRepTriggered': false, 'badRepTriggered': false, 'formState': 0, 'feedback': "Align side profile to camera.", 'activeJoints': activeJoints, 'faultyJoints': <PoseLandmarkType>{}, 'formScore': 0.0};
     }
 
-    // 1. The 4-Point Kinetic Chain
-    final hipHingeAngle = _calculateAngle(shoulder, hip, knee); // Checks sagging/piking
-    final kneeFlexionAngle = _calculateAngle(hip, knee, ankle); // Checks bent knees
-    final elbowAngle = _calculateAngle(shoulder, elbow, wrist); // Checks depth
-    final shoulderAngle = _calculateAngle(hip, shoulder, elbow); // Checks hand placement
+    // --- PERSPECTIVE LOCK: Enforce Side Profile ---
+    final shoulderWidth = (leftShoulder.x - rightShoulder.x).abs();
+    final torsoLength = math.sqrt(math.pow(shoulder.x - hip.x, 2) + math.pow(shoulder.y - hip.y, 2));
 
-    // 2. Strict Continuous Math (The Thermometer)
-    // 175+ is perfect (1.0). 155 is failing (0.0).
+    if (shoulderWidth > torsoLength * 0.6) {
+      return {
+        'goodRepTriggered': false, 
+        'badRepTriggered': false, 
+        'formState': 0, 
+        'feedback': "Turn sideways! Front view is not supported.", 
+        'activeJoints': activeJoints, 
+        'faultyJoints': <PoseLandmarkType>{}, 
+        'formScore': 0.0
+      };
+    }
+
+    // 1. The 4-Point Kinetic Chain
+    final hipHingeAngle = _calculateAngle(shoulder, hip, knee); 
+    final kneeFlexionAngle = _calculateAngle(hip, knee, ankle); 
+    final elbowAngle = _calculateAngle(shoulder, elbow, wrist); 
+    final shoulderAngle = _calculateAngle(hip, shoulder, elbow); 
+
+    // 2. Strict Continuous Math
     double coreScore = ((hipHingeAngle - 155.0) / 20.0).clamp(0.0, 1.0);
     double kneeScore = ((kneeFlexionAngle - 155.0) / 20.0).clamp(0.0, 1.0);
     double handScore = ((105.0 - shoulderAngle) / 20.0).clamp(0.0, 1.0);
     
-    // The thermometer takes the absolute worst metric currently happening
     double formScore = math.min(coreScore, math.min(kneeScore, handScore));
 
     // 3. Strict Heuristic Enforcement & Limb Specific Coloring
@@ -106,21 +120,17 @@ class BiomechanicsEngine {
     if (kneeFlexionAngle < 160.0) {
       formState = -1;
       feedback = "Straighten your legs! Knees are bent.";
-      // Color only the legs red
       faultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle, PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle]);
     } else if (hipHingeAngle < 160.0) {
       formState = -1;
       feedback = "Keep your spine rigid! Hips are sagging.";
-      // Color the torso and upper legs red
       faultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee]);
     } else if (shoulderAngle > 100.0) {
       formState = -1;
       feedback = "Hands too far forward. Stack wrists under shoulders.";
-      // Color the arms and torso red
       faultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow, PoseLandmarkType.rightHip, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow]);
     }
 
-    // Taint the rep if the form broke during this frame
     if (formState == -1) {
       _hasFormBrokenThisRep = true;
     }
@@ -131,21 +141,19 @@ class BiomechanicsEngine {
 
     if (_isDown) {
       feedback = formState == -1 ? feedback : "Push up!";
-      // The Lockout
       if (elbowAngle >= 160.0) {
         _isDown = false; 
         
         if (_hasFormBrokenThisRep) {
-          badRep = true; // Rep is finished, but invalid
+          badRep = true; 
           feedback = "Rep invalid. Fix your form!";
         } else {
-          goodRep = true; // Flawless rep
+          goodRep = true; 
           feedback = "Perfect rep!";
         }
-        _hasFormBrokenThisRep = false; // Reset the taint tracker for the next rep
+        _hasFormBrokenThisRep = false; 
       }
     } else {
-      // The Descent
       if (elbowAngle <= 90.0) {
         _isDown = true; 
         feedback = formState == -1 ? feedback : "Depth reached. Push!";
@@ -166,28 +174,100 @@ class BiomechanicsEngine {
   }
 
   Map<String, dynamic> _evaluateBicepCurl(Pose pose) {
-    // [Keep your Bicep Curl logic exactly as it was, just change the return mapping at the bottom to match the new Push-up structure (goodRepTriggered/badRepTriggered) instead of repTriggered.]
-    // For brevity, I'll provide the updated return block for the bicep curl here:
-    // ... [bicep math] ...
-    
-    // (Bicep Form Enforcement)
-    // if (shoulderSwingAngle > 35.0) {
-    //   formState = -1;
-    //   _hasFormBrokenThisRep = true;
-    // ...
-    //
-    // bool goodRep = false;
-    // bool badRep = false;
-    // if (_isDown) { ... if (elbowAngle < 50.0) { _isDown = false; if (_hasFormBrokenThisRep) { badRep=true; } else { goodRep=true; } _hasFormBrokenThisRep = false; }
-    
+    final landmarks = pose.landmarks;
+    final leftShoulder = landmarks[PoseLandmarkType.leftShoulder];
+    final rightShoulder = landmarks[PoseLandmarkType.rightShoulder];
+
+    if (leftShoulder == null || rightShoulder == null) {
+      return {'goodRepTriggered': false, 'badRepTriggered': false, 'formState': 0, 'feedback': "Full body not visible.", 'activeJoints': <PoseLandmarkType>{}, 'faultyJoints': <PoseLandmarkType>{}, 'formScore': 0.0};
+    }
+
+    final bool isLeftVisible = leftShoulder.likelihood > rightShoulder.likelihood;
+    final shoulder = isLeftVisible ? landmarks[PoseLandmarkType.leftShoulder] : landmarks[PoseLandmarkType.rightShoulder];
+    final elbow = isLeftVisible ? landmarks[PoseLandmarkType.leftElbow] : landmarks[PoseLandmarkType.rightElbow];
+    final wrist = isLeftVisible ? landmarks[PoseLandmarkType.leftWrist] : landmarks[PoseLandmarkType.rightWrist];
+    final hip = isLeftVisible ? landmarks[PoseLandmarkType.leftHip] : landmarks[PoseLandmarkType.rightHip];
+
+    final activeJoints = <PoseLandmarkType>{
+      PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder,
+      PoseLandmarkType.leftElbow, PoseLandmarkType.rightElbow,
+      PoseLandmarkType.leftWrist, PoseLandmarkType.rightWrist,
+      PoseLandmarkType.leftHip, PoseLandmarkType.rightHip,
+    };
+
+    if (shoulder == null || elbow == null || wrist == null || hip == null || shoulder.likelihood < 0.5 || elbow.likelihood < 0.5) {
+      return {'goodRepTriggered': false, 'badRepTriggered': false, 'formState': 0, 'feedback': "Align side profile to camera.", 'activeJoints': activeJoints, 'faultyJoints': <PoseLandmarkType>{}, 'formScore': 0.0};
+    }
+
+    // --- PERSPECTIVE LOCK: Enforce Side Profile ---
+    final shoulderWidth = (leftShoulder.x - rightShoulder.x).abs();
+    final torsoLength = math.sqrt(math.pow(shoulder.x - hip.x, 2) + math.pow(shoulder.y - hip.y, 2));
+
+    if (shoulderWidth > torsoLength * 0.6) {
+      return {
+        'goodRepTriggered': false, 
+        'badRepTriggered': false, 
+        'formState': 0, 
+        'feedback': "Turn sideways! Front view is not supported.", 
+        'activeJoints': activeJoints, 
+        'faultyJoints': <PoseLandmarkType>{}, 
+        'formScore': 0.0
+      };
+    }
+
+    final elbowAngle = _calculateAngle(shoulder, elbow, wrist);
+    final shoulderSwingAngle = _calculateAngle(hip, shoulder, elbow);
+
+    double formScore = ((35.0 - shoulderSwingAngle) / 20.0).clamp(0.0, 1.0);
+
+    Set<PoseLandmarkType> faultyJoints = {};
+    int formState = 1; 
+    String feedback = "Good posture.";
+
+    if (shoulderSwingAngle > 35.0) {
+      formState = -1;
+      feedback = "Keep elbows tucked! Stop swinging.";
+      faultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow, PoseLandmarkType.rightHip, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow]);
+    }
+
+    if (formState == -1) {
+      _hasFormBrokenThisRep = true;
+    }
+
+    bool goodRep = false;
+    bool badRep = false;
+
+    if (_isDown) {
+      feedback = formState == -1 ? feedback : "Curl it up!";
+      if (elbowAngle < 50.0) {
+        _isDown = false; 
+        
+        if (_hasFormBrokenThisRep) {
+          badRep = true;
+          feedback = "Rep invalid. Stop swinging!";
+        } else {
+          goodRep = true;
+          feedback = "Good squeeze!";
+        }
+        _hasFormBrokenThisRep = false;
+      }
+    } else {
+      if (elbowAngle > 150.0) {
+        _isDown = true; 
+        feedback = formState == -1 ? feedback : "Fully extended. Curl!";
+      } else {
+        feedback = formState == -1 ? feedback : "Lower the weight fully.";
+      }
+    }
+
     return {
-      'goodRepTriggered': false, // Update this when you fully build out the bicep rep logic
-      'badRepTriggered': false,  // Update this when you fully build out the bicep rep logic
-      'formState': 0,
-      'feedback': "Bicep strict mode pending...",
-      'activeJoints': <PoseLandmarkType>{},
-      'faultyJoints': <PoseLandmarkType>{},
-      'formScore': 1.0,
+      'goodRepTriggered': goodRep,
+      'badRepTriggered': badRep,
+      'formState': formState,
+      'feedback': feedback,
+      'activeJoints': activeJoints,
+      'faultyJoints': faultyJoints,
+      'formScore': formScore,
     };
   }
 }
