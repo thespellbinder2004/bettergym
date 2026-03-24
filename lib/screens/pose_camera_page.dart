@@ -15,6 +15,7 @@ import '../services/audio_service.dart';
 import '../services/hardware_service.dart'; 
 import 'session_setup_page.dart';
 import 'session_summary_page.dart';
+import '../services/biomechanics_engine.dart';
 
 enum SessionPhase { acquisition, prep, active, rest, paused, finished }
 
@@ -150,9 +151,7 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
     } else if (_currentPhase == SessionPhase.active) {
       if (widget.routine[_currentExerciseIndex].isDuration) {
         _runCountdown(() => _completeExercise());
-      } else {
-        _simulateRepDetection();
-      }
+      } 
     }
   }
 
@@ -175,6 +174,7 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
   }
 
   void _startRestPhase() {
+    BiomechanicsEngine.instance.reset();
     setState(() {
       _currentPhase = SessionPhase.rest;
       _countdownSeconds = _restTimeSetting;
@@ -187,6 +187,7 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
   }
 
   void _startActivePhase() {
+    BiomechanicsEngine.instance.reset();
     final currentExercise = widget.routine[_currentExerciseIndex];
     setState(() {
       _currentPhase = SessionPhase.active;
@@ -197,9 +198,7 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
 
     if (currentExercise.isDuration) {
       _runCountdown(() => _completeExercise());
-    } else {
-      _simulateRepDetection();
-    }
+    } 
   }
 
   void _runCountdown(VoidCallback onComplete) {
@@ -258,29 +257,6 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
       AudioService.instance.playFinishSound(); // NEW
       _exitSession(isCompleted: true);
     }
-  }
-
-  void _simulateRepDetection() {
-    _phaseTimer?.cancel();
-    _phaseTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (!mounted || _currentPhase != SessionPhase.active || widget.routine[_currentExerciseIndex].isDuration) {
-        timer.cancel(); return;
-      }
-      if (_currentPhase == SessionPhase.paused) return;
-
-      setState(() {
-        _repsOrSecondsRemaining--;
-        AudioService.instance.playChime(); 
-
-        if (_repsOrSecondsRemaining <= 0) {
-          timer.cancel(); _completeExercise();
-        } else if (_repsOrSecondsRemaining % 3 == 0) {
-          _triggerToast("Knees caving in!", -1);
-        } else {
-          _formState = 1;
-        }
-      });
-    });
   }
 
   void _triggerToast(String message, int state) {
@@ -355,23 +331,39 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
     _isProcessing = true;
     _lastProcessed = now;
 
-    try {
+try {
       final inputImage = _inputImageFromCameraImage(image);
       if (inputImage == null) return;
       final poses = await _poseDetector.processImage(inputImage);
       if (!mounted) return;
 
-      bool targetLocked = false;
-      if (poses.isNotEmpty) {
-        final landmarks = poses.first.landmarks;
-        final nose = landmarks[PoseLandmarkType.nose];
-        final leftAnkle = landmarks[PoseLandmarkType.leftAnkle];
-        final rightAnkle = landmarks[PoseLandmarkType.rightAnkle];
+      bool targetLocked = poses.isNotEmpty;
+      Set<PoseLandmarkType> activeJointsToRender = {};
 
-        if (nose != null && leftAnkle != null && rightAnkle != null) {
-          if (nose.likelihood > 0.6 && (leftAnkle.likelihood > 0.6 || rightAnkle.likelihood > 0.6)) {
-            targetLocked = true;
-          }
+      if (targetLocked && _currentPhase == SessionPhase.active && widget.routine.isNotEmpty) {
+        final currentExercise = widget.routine[_currentExerciseIndex];
+        
+        // Execute Biomechanics Engine
+        if (!currentExercise.isDuration) {
+          final analysis = BiomechanicsEngine.instance.processFrame(
+            pose: poses.first, 
+            exerciseName: currentExercise.name
+          );
+
+          activeJointsToRender = analysis['activeJoints'];
+
+          setState(() {
+            _formState = analysis['formState'];
+            _feedbackMessage = analysis['feedback'];
+
+            if (analysis['repTriggered'] == true) {
+              _repsOrSecondsRemaining--;
+              AudioService.instance.playChime();
+              if (_repsOrSecondsRemaining <= 0) {
+                _completeExercise();
+              }
+            }
+          });
         }
       }
 
@@ -388,6 +380,7 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
         isFrontCamera: _isFrontCamera,
         formState: _formState,
         isDevicePortrait: isDevicePortrait,
+        activeJoints: activeJointsToRender, // Pass to painter
       );
     } catch (e) {
       debugPrint('POSE ERROR: $e');
@@ -812,6 +805,7 @@ class PoseOverlayData {
   final bool isFrontCamera;
   final int formState;
   final bool isDevicePortrait;
+  final Set<PoseLandmarkType> activeJoints; // NEW
 
   PoseOverlayData({
     required this.poses,
@@ -820,6 +814,7 @@ class PoseOverlayData {
     required this.isFrontCamera,
     required this.formState,
     required this.isDevicePortrait,
+    required this.activeJoints, // NEW
   });
 }
 
@@ -831,6 +826,7 @@ class PosePainter extends CustomPainter {
     required this.isFrontCamera,
     required this.formState,
     required this.isDevicePortrait,
+    required this.activeJoints, // NEW
   });
 
   final List<Pose> poses;
@@ -839,17 +835,21 @@ class PosePainter extends CustomPainter {
   final bool isFrontCamera;
   final int formState;
   final bool isDevicePortrait;
+  final Set<PoseLandmarkType> activeJoints;
 
   @override
   void paint(Canvas canvas, Size size) {
     final glowPaint = Paint()..color = Colors.white.withOpacity(0.6)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
     final solidPointPaint = Paint()..color = Colors.white..style = PaintingStyle.fill;
+    
+    final inactivePointPaint = Paint()..color = Colors.grey.withOpacity(0.5)..style = PaintingStyle.fill;
 
-    Color edgeColor = Colors.grey.withOpacity(0.7);
-    if (formState == 1) edgeColor = mintGreen;
-    if (formState == -1) edgeColor = neonRed;
+    Color activeEdgeColor = Colors.grey.withOpacity(0.7);
+    if (formState == 1) activeEdgeColor = mintGreen;
+    if (formState == -1) activeEdgeColor = neonRed;
 
-    final linePaint = Paint()..color = edgeColor..strokeWidth = 8..strokeCap = StrokeCap.round..style = PaintingStyle.stroke;
+    final activeLinePaint = Paint()..color = activeEdgeColor..strokeWidth = 8..strokeCap = StrokeCap.round..style = PaintingStyle.stroke;
+    final inactiveLinePaint = Paint()..color = Colors.grey.withOpacity(0.3)..strokeWidth = 4..strokeCap = StrokeCap.round..style = PaintingStyle.stroke;
 
     final double absoluteImageWidth = isDevicePortrait ? imageSize.height : imageSize.width;
     final double absoluteImageHeight = isDevicePortrait ? imageSize.width : imageSize.height;
@@ -861,8 +861,13 @@ class PosePainter extends CustomPainter {
         final landmark = landmarks[type];
         if (landmark == null || landmark.likelihood < 0.6) return;
         final point = _mapPoint(Offset(landmark.x, landmark.y), size, absoluteImageWidth, absoluteImageHeight);
-        canvas.drawCircle(point, 18, glowPaint);
-        canvas.drawCircle(point, 8, solidPointPaint);
+        
+        if (activeJoints.isEmpty || activeJoints.contains(type)) {
+          canvas.drawCircle(point, 18, glowPaint);
+          canvas.drawCircle(point, 8, solidPointPaint);
+        } else {
+          canvas.drawCircle(point, 6, inactivePointPaint);
+        }
       }
 
       void drawLine(PoseLandmarkType a, PoseLandmarkType b) {
@@ -871,23 +876,31 @@ class PosePainter extends CustomPainter {
         if (p1 == null || p2 == null || p1.likelihood < 0.6 || p2.likelihood < 0.6) return;
         final start = _mapPoint(Offset(p1.x, p1.y), size, absoluteImageWidth, absoluteImageHeight);
         final end = _mapPoint(Offset(p2.x, p2.y), size, absoluteImageWidth, absoluteImageHeight);
-        canvas.drawLine(start, end, linePaint);
+        
+        if (activeJoints.isEmpty || (activeJoints.contains(a) && activeJoints.contains(b))) {
+          canvas.drawLine(start, end, activeLinePaint);
+        } else {
+          canvas.drawLine(start, end, inactiveLinePaint);
+        }
       }
 
+      // Arms
       drawLine(PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder);
       drawLine(PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow);
       drawLine(PoseLandmarkType.leftElbow, PoseLandmarkType.leftWrist);
       drawLine(PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow);
       drawLine(PoseLandmarkType.rightElbow, PoseLandmarkType.rightWrist);
+      
+      // Torso
       drawLine(PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip);
       drawLine(PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip);
       drawLine(PoseLandmarkType.leftHip, PoseLandmarkType.rightHip);
+      
+      // Legs
       drawLine(PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee);
       drawLine(PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle);
       drawLine(PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee);
       drawLine(PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle);
-
-      drawPoint(PoseLandmarkType.nose);
 
       final bodyNodes = [
         PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder,
@@ -895,7 +908,8 @@ class PosePainter extends CustomPainter {
         PoseLandmarkType.leftWrist, PoseLandmarkType.rightWrist,
         PoseLandmarkType.leftHip, PoseLandmarkType.rightHip,
         PoseLandmarkType.leftKnee, PoseLandmarkType.rightKnee,
-        PoseLandmarkType.leftAnkle, PoseLandmarkType.rightAnkle
+        PoseLandmarkType.leftAnkle, PoseLandmarkType.rightAnkle,
+        PoseLandmarkType.nose
       ];
       for (final type in bodyNodes) {
         drawPoint(type);
