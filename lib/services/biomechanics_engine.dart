@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import '../services/audio_service.dart';
 
 class BiomechanicsEngine {
   static final BiomechanicsEngine instance = BiomechanicsEngine._internal();
@@ -128,16 +129,39 @@ class BiomechanicsEngine {
 
     if (kneeFlexionAngle < 160.0) {
       rawFormState = -1;
-      rawFormError = "Straighten your legs! Knees are bent.";
+      rawFormError = "Knees bent.";
       rawFaultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle, PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle]);
+      
+      // TRIGGER TTS
+      AudioService.instance.speakCorrection([
+        "Knees are bent, straighten your legs.",
+        "Keep your legs completely straight.",
+        "Lock your knees out."
+      ]);
+
     } else if (hipHingeAngle < 160.0) {
       rawFormState = -1;
-      rawFormError = "Keep your spine rigid! Hips are sagging.";
+      rawFormError = "Hips sagging.";
       rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee]);
+      
+      // TRIGGER TTS
+      AudioService.instance.speakCorrection([
+        "Hips are dropping. Squeeze your core.",
+        "Keep your back straight. Don't let your hips sag.",
+        "Tighten your core. Your hips are falling."
+      ]);
+
     } else if (shoulderAngle > 100.0) {
       rawFormState = -1;
-      rawFormError = "Hands too far forward. Stack wrists under shoulders.";
+      rawFormError = "Hands too far forward.";
       rawFaultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow, PoseLandmarkType.rightHip, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow]);
+      
+      // TRIGGER TTS
+      AudioService.instance.speakCorrection([
+        "Move your hands back. They should be under your shoulders.",
+        "Your hands are too far forward. Bring them closer to your chest.",
+        "Stack your wrists directly under your shoulders."
+      ]);
     }
 
     // --- DEBOUNCE LOGIC ---
