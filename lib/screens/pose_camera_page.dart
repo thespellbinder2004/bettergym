@@ -168,29 +168,44 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
     _runCountdown(() => _startPrepPhase()); 
   }
 
-void _startPrepPhase() {
+  void _startPrepPhase() {
     final currentExerciseName = widget.routine.isNotEmpty ? widget.routine[_currentExerciseIndex].name : "the exercise";
+    // Detect if we need side-profile warnings
+    final isPushUp = currentExerciseName.toLowerCase().contains("push");
+
     setState(() {
       _currentPhase = SessionPhase.prep;
       _countdownSeconds = _prepTimeSetting;
     });
+    
     _triggerToast("Get Ready.", 0);
     
     if (_prepTimeSetting >= 20) {
-      AudioService.instance.speakPriority([
-        "Prepare for $currentExerciseName. Take your time to breathe or grab some water.",
-        "Next up, $currentExerciseName. You have plenty of time to get into position.",
-        "Get ready for $currentExerciseName. You can set your phone down horizontally if you prefer.",
-        "Take a breath. We are doing $currentExerciseName next."
-      ]);
+      if (isPushUp) {
+        AudioService.instance.speakPriority([
+          "Prepare for $currentExerciseName. Ensure your whole body is visible from the side.",
+          "Next up, $currentExerciseName. Set your phone down and give me a clear side profile."
+        ]);
+      } else {
+        AudioService.instance.speakPriority([
+          "Prepare for $currentExerciseName. Take your time to breathe or grab some water.",
+          "Next up, $currentExerciseName. You have plenty of time to get into position."
+        ]);
+      }
     } else {
-      AudioService.instance.speakPriority([
-        "Prepare for $currentExerciseName.",
-        "Get ready for $currentExerciseName.",
-        "Next exercise is $currentExerciseName.",
-        "Let's move to $currentExerciseName."
-      ]);
+      if (isPushUp) {
+        AudioService.instance.speakPriority([
+          "Prepare for $currentExerciseName. Side profile required.",
+          "Get ready for $currentExerciseName. Face sideways to the camera."
+        ]);
+      } else {
+        AudioService.instance.speakPriority([
+          "Prepare for $currentExerciseName.",
+          "Get ready for $currentExerciseName."
+        ]);
+      }
     }
+    
     _runCountdown(() => _startActivePhase());
   }
 
