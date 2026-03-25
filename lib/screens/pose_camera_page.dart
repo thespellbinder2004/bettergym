@@ -56,7 +56,7 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
 
   int _repsOrSecondsRemaining = 0;
   int _badRepsSessionCount = 0;
-  int _formState = 0;
+  int _formState = 0; // Declared once
   String _feedbackMessage = "Position yourself in frame.";
   double _formScore = 1.0; 
   Set<PoseLandmarkType> _faultyJoints = {}; 
@@ -66,6 +66,10 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
 
   int _exitCountdown = 4;
   Timer? _exitTimer;
+  
+  // --- INVISIBLE TELEMETRY TRACKERS ---
+  int _previousFormState = 1; 
+  List<int> _formBreakSeconds = []; // Logs the exact second the form broke
 
   @override
   void initState() {
@@ -232,6 +236,11 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
 
   void _startActivePhase() {
     BiomechanicsEngine.instance.reset();
+    
+    // --- WIPE THE LOGS FOR NEW EXERCISE ---
+    _previousFormState = 1;
+    _formBreakSeconds = [];
+
     final currentExercise = widget.routine[_currentExerciseIndex];
     setState(() {
       _currentPhase = SessionPhase.active;
@@ -411,7 +420,6 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
       if (targetLocked && _currentPhase == SessionPhase.active && widget.routine.isNotEmpty) {
         final currentExercise = widget.routine[_currentExerciseIndex];
         
-        // WE MUST PROCESS THE FRAME REGARDLESS OF DURATION
         final analysis = BiomechanicsEngine.instance.processFrame(
           pose: poses.first, 
           exerciseName: currentExercise.name
@@ -425,7 +433,15 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
           _formScore = analysis['formScore'] ?? 1.0;     
           _faultyJoints = analysis['faultyJoints'] ?? {}; 
 
-          // Only decrement REPS here. Duration is handled by the Timer.
+          // --- THE INVISIBLE TELEMETRY TRACKER ---
+          if (_previousFormState == 1 && _formState == -1) {
+            if (currentExercise.isDuration) {
+              _formBreakSeconds.add(_repsOrSecondsRemaining);
+              _badRepsSessionCount++; 
+            }
+          }
+          _previousFormState = _formState;
+
           if (!currentExercise.isDuration) {
             if (analysis['goodRepTriggered'] == true) {
               _repsOrSecondsRemaining--;
@@ -712,7 +728,6 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
         final scale = _calculateScale(context, previewRatio);
         final currentExercise = widget.routine.isNotEmpty ? widget.routine[_currentExerciseIndex] : null;
 
-        // --- BACK BUTTON TRAP (PopScope) ---
         return PopScope(
           canPop: false, 
           onPopInvokedWithResult: (didPop, result) async {
@@ -1009,7 +1024,6 @@ class PosePainter extends CustomPainter {
         final point = _mapPoint(Offset(landmark.x, landmark.y), size, absoluteImageWidth, absoluteImageHeight);
         
         if (activeJoints.isEmpty || activeJoints.contains(type)) {
-          // NEW: Make the nose (head) significantly larger
           if (type == PoseLandmarkType.nose) {
             canvas.drawCircle(point, 30, glowPaint); 
             canvas.drawCircle(point, 16, solidPointPaint);
@@ -1041,14 +1055,12 @@ class PosePainter extends CustomPainter {
         }
       }
 
-      // Arms
       drawLine(PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder);
       drawLine(PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow);
       drawLine(PoseLandmarkType.leftElbow, PoseLandmarkType.leftWrist);
       drawLine(PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow);
       drawLine(PoseLandmarkType.rightElbow, PoseLandmarkType.rightWrist);
       
-      // Torso & Legs
       drawLine(PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip);
       drawLine(PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip);
       drawLine(PoseLandmarkType.leftHip, PoseLandmarkType.rightHip);
@@ -1057,7 +1069,6 @@ class PosePainter extends CustomPainter {
       drawLine(PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee);
       drawLine(PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle);
 
-      // NEW: Draw the Neck Line connecting Nose to Mid-Shoulder
       final nose = landmarks[PoseLandmarkType.nose];
       final lShoulder = landmarks[PoseLandmarkType.leftShoulder];
       final rShoulder = landmarks[PoseLandmarkType.rightShoulder];
@@ -1068,7 +1079,6 @@ class PosePainter extends CustomPainter {
         final midShoulderY = (lShoulder.y + rShoulder.y) / 2;
         final midShoulderPoint = _mapPoint(Offset(midShoulderX, midShoulderY), size, absoluteImageWidth, absoluteImageHeight);
         
-        // Draw the neck in active color if shoulders are active
         if (activeJoints.contains(PoseLandmarkType.leftShoulder)) {
           canvas.drawLine(nosePoint, midShoulderPoint, activeLinePaint);
         } else {

@@ -40,7 +40,8 @@ class BenchDipEvaluator extends BaseEvaluator {
     final elbowAngle = calculateAngle(shoulder, elbow, wrist); 
     if (elbowAngle < lowestElbowAngle) lowestElbowAngle = elbowAngle;
 
-    double elbowScore = ((elbowAngle - 90.0) / 70.0).clamp(0.0, 1.0);
+    // Adjusted Thermometer Smoothing to match the new 100-degree depth
+    double elbowScore = ((elbowAngle - 100.0) / 60.0).clamp(0.0, 1.0);
     double rawFormScore = elbowScore;
     smoothedFormScore = (smoothedFormScore * 0.8) + (rawFormScore * 0.2);
 
@@ -53,27 +54,41 @@ class BenchDipEvaluator extends BaseEvaluator {
       rawFormState = -1;
       rawFaultyJoints.addAll(activeJoints); 
       rawFormError = "Turn sideways.";
-      ttsVariations = ["Turn sideways. Front view is not supported.", "Please face sideways to the camera."];
+      ttsVariations = [
+        "Turn sideways.", 
+        "Please face the side.",
+        "Side profile needed."
+      ];
     } else if (torsoDx > torsoDy) {
       rawFormState = -1;
       rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip]);
       rawFormError = "Sit upright.";
-      ttsVariations = ["Keep your torso vertical. Sit upright.", "Don't lean forward too much."];
-    } else if (horizontalDrift > torsoLength * 0.45) {
+      ttsVariations = [
+        "Sit upright.", 
+        "Don't lean forward.",
+        "Chest up.",
+        "Keep your back straight."
+      ];
+    } else if (horizontalDrift > torsoLength * 0.55) { // Relaxed from 0.45 to 0.55
       rawFormState = -1;
       rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip]);
       rawFormError = "Hips drifting forward.";
-      ttsVariations = ["Keep your back close to the bench.", "Don't drift forward. Slide straight down.", "Bring your hips back toward your hands."];
+      ttsVariations = [
+        "Stay close to the bench.", 
+        "Don't drift forward.", 
+        "Hips back.",
+        "Keep your back near the bench."
+      ];
     }
 
     processFormState(
       rawFormState: rawFormState, rawFormError: rawFormError, 
       rawFaultyJoints: rawFaultyJoints, ttsVariations: ttsVariations, 
-      amnesiaConditionMet: elbowAngle >= 150.0
+      amnesiaConditionMet: elbowAngle >= 145.0 // Relaxed amnesia threshold
     );
 
     // --- START THE STOPWATCH ---
-    if (elbowAngle < 150.0 && repMovementStartTime == null) {
+    if (elbowAngle < 145.0 && repMovementStartTime == null) {
       repMovementStartTime = DateTime.now();
     }
 
@@ -83,7 +98,8 @@ class BenchDipEvaluator extends BaseEvaluator {
 
     if (isDown) {
       repFeedback = "Push up!";
-      if (elbowAngle >= 160.0) {
+      // Relaxed lockout from 160.0 to 155.0
+      if (elbowAngle >= 155.0) {
         isDown = false; 
         lowestElbowAngle = 180.0; 
         
@@ -98,7 +114,11 @@ class BenchDipEvaluator extends BaseEvaluator {
         if (isRushed) {
           badRep = true; 
           repFeedback = "Too fast! Control the rep.";
-          AudioService.instance.speakCorrection(["Slow down. Don't rush.", "Control the weight. Too fast."]);
+          AudioService.instance.speakCorrection([
+            "Slow down.", 
+            "Don't rush the rep.",
+            "Control your speed."
+          ]);
         } else if (hasFormBrokenThisRep) {
           badRep = true; 
           repFeedback = "Rep invalid. Watch your form!";
@@ -108,14 +128,20 @@ class BenchDipEvaluator extends BaseEvaluator {
         }
       }
     } else {
-      if (elbowAngle <= 90.0) {
+      // Relaxed depth from 90.0 to 100.0
+      if (elbowAngle <= 100.0) {
         isDown = true; 
         repFeedback = "Depth reached. Push!";
       } else {
-        repFeedback = "Lower... hit 90 degrees.";
+        repFeedback = "Lower yourself.";
 
-        if (elbowAngle >= 150.0 && lowestElbowAngle < 130.0) {
-          AudioService.instance.speakCorrection(["Half rep. Go lower next time.", "Not low enough. Break 90 degrees.", "Get deeper on the dip."]);
+        // Half-rep detection adjusted for new thresholds
+        if (elbowAngle >= 145.0 && lowestElbowAngle < 120.0) {
+          AudioService.instance.speakCorrection([
+            "Go a little lower.", 
+            "Not deep enough.", 
+            "Drop your hips more."
+          ]);
           lowestElbowAngle = 180.0; 
         }
       }

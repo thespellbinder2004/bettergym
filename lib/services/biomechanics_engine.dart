@@ -48,12 +48,13 @@ abstract class BaseEvaluator {
     return degrees;
   }
 
-  void processFormState({
+void processFormState({
     required int rawFormState,
     required String rawFormError,
     required Set<PoseLandmarkType> rawFaultyJoints,
     required List<String> ttsVariations,
     required bool amnesiaConditionMet, 
+    bool isInstantFault = false, // NEW: The Instant-Kill Switch
   }) {
     if (amnesiaConditionMet && rawFormState == 1 && !isDown) {
       hasFormBrokenThisRep = false; 
@@ -62,12 +63,17 @@ abstract class BaseEvaluator {
     if (rawFormState == -1) {
       consecutiveBadFrames++;
       consecutiveGoodFrames = 0;
-      if (consecutiveBadFrames >= debounceThreshold) {
+      
+      // Trigger if we hit the 5-frame limit OR if the Instant-Kill switch is thrown on frame 1
+      if (consecutiveBadFrames >= debounceThreshold || (isInstantFault && consecutiveBadFrames == 1)) {
         publishedFormState = -1;
         publishedFormError = rawFormError;
         publishedFaultyJoints = Set.from(rawFaultyJoints);
         
-        if (ttsVariations.isNotEmpty) AudioService.instance.speakCorrection(ttsVariations);
+        // Only speak on the exact frame it triggers to prevent audio spam
+        if (ttsVariations.isNotEmpty && (consecutiveBadFrames == debounceThreshold || (isInstantFault && consecutiveBadFrames == 1))) {
+          AudioService.instance.speakCorrection(ttsVariations);
+        }
         hasFormBrokenThisRep = true; 
       }
     } else {
