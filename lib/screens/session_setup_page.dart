@@ -211,33 +211,6 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
     );
   }
 
-  void _confirmDelete(int index) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: darkSlate,
-        title: const Text('DELETE EXERCISE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: Text('Remove ${_routine[index].name} from your session?', style: const TextStyle(color: Colors.grey)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: neonRed, foregroundColor: Colors.white),
-            onPressed: () {
-              setState(() {
-                _routine.removeAt(index);
-              });
-              _saveActiveRoutine();
-              Navigator.pop(context);
-            },
-            child: const Text('DELETE', style: TextStyle(fontWeight: FontWeight.bold)),
-          )
-        ],
-      ),
-    );
-  }
 
   void _showAddEditDialog({WorkoutSet? existingSet, int? index}) {
     String selectedName = existingSet?.name ?? _availableExercises.first;
@@ -439,7 +412,12 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                         ),
                         IconButton(
                           icon: const Icon(Icons.delete_outline, color: neonRed),
-                          onPressed: () => _confirmDelete(index),
+                          onPressed: () {
+                            setState(() {
+                              _routine.removeAt(index);
+                            });
+                            _saveActiveRoutine(); // Saves instantly
+                          },
                         ),
                         // --- THE FIX: The functional drag handle ---
                         ReorderableDragStartListener(

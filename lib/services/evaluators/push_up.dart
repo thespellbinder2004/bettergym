@@ -138,6 +138,9 @@ class PushUpEvaluator extends BaseEvaluator {
         repFeedback = "Depth reached. Push!";
       } else {
         repFeedback = "Lower... hit 90 degrees.";
+        
+        // --- THE PARADOX FIX ---
+        // Only trigger a half-rep if they stand back up to 140 BUT their lowest drop was greater than 100
         if (elbowAngle >= 140.0 && lowestElbowAngle > 100.0) {
           AudioService.instance.speakCorrection(["Half rep. Go lower next time.", "Not low enough. Break 90 degrees.", "Chest to the floor."]);
           lowestElbowAngle = 180.0; 
