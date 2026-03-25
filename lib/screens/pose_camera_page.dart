@@ -545,9 +545,17 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
     WakelockPlus.disable(); 
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     
+    // Calculate how many exercises were fully completed
+    int completedCount = isCompleted ? widget.routine.length : _currentExerciseIndex;
+    
     Navigator.pushReplacement(
       context, 
-      MaterialPageRoute(builder: (_) => SessionSummaryPage(isCompleted: isCompleted)) 
+      MaterialPageRoute(builder: (_) => SessionSummaryPage(
+        isCompleted: isCompleted,
+        formBreaks: _badRepsSessionCount,
+        completedExercises: completedCount,
+        totalExercises: widget.routine.length,
+      )) 
     );
   }
 

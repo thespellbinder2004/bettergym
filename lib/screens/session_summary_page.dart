@@ -1,188 +1,189 @@
 import 'package:flutter/material.dart';
+import '../main.dart';
+import 'session_setup_page.dart';
 
-import '../main.dart'; // Inherit global colors
-import 'main_layout.dart';
-import 'progress_report_page.dart';
-
-class SessionSummaryPage extends StatefulWidget {
-  final int totalReps;
-  final int durationMinutes;
-  final int formWarnings;
-  final bool isCompleted; // NEW: Tracks if they finished or quit
+class SessionSummaryPage extends StatelessWidget {
+  final bool isCompleted;
+  final int formBreaks;
+  final int completedExercises;
+  final int totalExercises;
 
   const SessionSummaryPage({
     super.key, 
-    this.totalReps = 142,
-    this.durationMinutes = 45,
-    this.formWarnings = 3,
-    this.isCompleted = true, // Defaults to true
+    required this.isCompleted,
+    required this.formBreaks,
+    required this.completedExercises,
+    required this.totalExercises,
   });
 
-  @override
-  State<SessionSummaryPage> createState() => _SessionSummaryPageState();
-}
-
-class _SessionSummaryPageState extends State<SessionSummaryPage> with SingleTickerProviderStateMixin {
-  late AnimationController _animController;
-  late Animation<double> _fadeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animController = AnimationController(
-      vsync: this, 
-      duration: const Duration(milliseconds: 1200)
-    );
+  String _calculateGrade() {
+    if (completedExercises == 0) return "N/A";
     
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animController, curve: const Interval(0.5, 1.0, curve: Curves.easeIn))
-    );
+    // Calculate an average of form breaks per exercise
+    double breaksPerExercise = formBreaks / completedExercises;
 
-    _animController.forward();
+    if (breaksPerExercise == 0) return "S"; // Flawless
+    if (breaksPerExercise <= 1.0) return "A";
+    if (breaksPerExercise <= 2.5) return "B";
+    if (breaksPerExercise <= 4.0) return "C";
+    return "D";
   }
 
-  @override
-  void dispose() {
-    _animController.dispose();
-    super.dispose();
+  Color _getGradeColor(String grade) {
+    switch (grade) {
+      case "S": return Colors.purpleAccent;
+      case "A": return mintGreen;
+      case "B": return Colors.blueAccent;
+      case "C": return Colors.orangeAccent;
+      case "D": return neonRed;
+      default: return Colors.grey;
+    }
   }
 
-  Widget _buildStatBox(String label, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: darkSlate,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(height: 12),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12, letterSpacing: 1.0)),
-        ],
-      ),
-    );
+  String _getFeedbackText(String grade) {
+    if (!isCompleted) return "Session aborted early. Rest up and try again.";
+    switch (grade) {
+      case "S": return "Biomechanical perfection. Not a single form break.";
+      case "A": return "Excellent session. Form was consistently solid.";
+      case "B": return "Good work. A few form breaks, but overall strong.";
+      case "C": return "You got it done, but form degraded. Lower the target next time.";
+      case "D": return "Form was highly unstable. Focus on technique over volume.";
+      default: return "Session complete.";
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // NEW: Dynamic UI mapping based on completion status
-    final Color themeColor = widget.isCompleted ? mintGreen : Colors.orange;
-    final IconData heroIcon = widget.isCompleted ? Icons.check_rounded : Icons.stop_rounded;
-    final String titleText = widget.isCompleted ? 'SESSION COMPLETE' : 'SESSION ABORTED';
-    final String subText = widget.isCompleted ? 'Biomechanical data successfully logged.' : 'Partial session data saved to history.';
+    final String grade = _calculateGrade();
+    final Color gradeColor = _getGradeColor(grade);
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: navyBlue,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 40.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Spacer(),
-              
-              TweenAnimationBuilder(
-                tween: Tween<double>(begin: 0.5, end: 1.0),
-                duration: const Duration(milliseconds: 800),
-                curve: Curves.elasticOut,
-                builder: (context, value, child) {
-                  return Transform.scale(
-                    scale: value,
-                    child: child,
-                  );
-                },
-                child: Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    color: themeColor.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: themeColor, width: 4),
-                    boxShadow: [
-                      BoxShadow(color: themeColor.withOpacity(0.3), blurRadius: 30, spreadRadius: 5),
-                    ]
-                  ),
-                  child: Icon(heroIcon, color: themeColor, size: 64),
+              // --- HEADER ---
+              Text(
+                isCompleted ? "SESSION COMPLETE" : "SESSION ABORTED",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: isCompleted ? mintGreen : neonRed,
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 4.0,
                 ),
               ),
-              
-              const SizedBox(height: 32),
-              
-              Text(
-                titleText,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 3.0),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                subText,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.grey, fontSize: 14),
-              ),
-              
               const SizedBox(height: 48),
 
+              // --- THE GRADE BADGE ---
+              Center(
+                child: Container(
+                  width: 160,
+                  height: 160,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: darkSlate,
+                    border: Border.all(color: gradeColor, width: 6),
+                    boxShadow: [
+                      BoxShadow(color: gradeColor.withOpacity(0.3), blurRadius: 30, spreadRadius: 5),
+                    ]
+                  ),
+                  child: Center(
+                    child: Text(
+                      grade,
+                      style: TextStyle(
+                        color: gradeColor,
+                        fontSize: 72,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // --- DYNAMIC FEEDBACK ---
+              Text(
+                _getFeedbackText(grade),
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 16, height: 1.5),
+              ),
+              const SizedBox(height: 48),
+
+              // --- TELEMETRY GRID ---
               Row(
                 children: [
-                  Expanded(child: _buildStatBox('TOTAL REPS', widget.totalReps.toString(), Icons.fitness_center, themeColor)),
+                  Expanded(
+                    child: _buildStatCard(
+                      title: "PROGRESS",
+                      value: "$completedExercises / $totalExercises",
+                      icon: Icons.checklist,
+                      color: Colors.blueAccent,
+                    ),
+                  ),
                   const SizedBox(width: 16),
-                  Expanded(child: _buildStatBox('MINUTES', widget.durationMinutes.toString(), Icons.timer, Colors.blueAccent)),
+                  Expanded(
+                    child: _buildStatCard(
+                      title: "FORM BREAKS",
+                      value: formBreaks.toString(),
+                      icon: Icons.warning_amber_rounded,
+                      color: formBreaks == 0 ? mintGreen : neonRed,
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 16),
-              _buildStatBox('FORM WARNINGS', widget.formWarnings.toString(), Icons.warning_amber_rounded, widget.formWarnings > 5 ? neonRed : Colors.orange),
-
+              
               const Spacer(),
 
-              FadeTransition(
-                opacity: _fadeAnimation,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: themeColor,
-                        foregroundColor: navyBlue,
-                        minimumSize: const Size.fromHeight(56),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (_) => const ProgressReportPage()),
-                        );
-                      },
-                      child: const Text('VIEW DETAILED REPORT', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-                    ),
-                    const SizedBox(height: 16),
-                    OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        side: const BorderSide(color: Colors.grey),
-                        minimumSize: const Size.fromHeight(56),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () {
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(builder: (_) => const MainLayout()),
-                          (route) => false,
-                        );
-                      },
-                      child: const Text('RETURN TO DASHBOARD', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-                    ),
-                    const SizedBox(height: 24),
-                  ],
+              // --- EXIT BUTTON ---
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: mintGreen,
+                  foregroundColor: navyBlue,
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
+                icon: const Icon(Icons.home, size: 28),
+                label: const Text("RETURN TO SETUP", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
+                onPressed: () {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SessionSetupPage()),
+                    (route) => false,
+                  );
+                },
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildStatCard({required String title, required String value, required IconData icon, required Color color}) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: darkSlate,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 8),
+              Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+        ],
       ),
     );
   }
