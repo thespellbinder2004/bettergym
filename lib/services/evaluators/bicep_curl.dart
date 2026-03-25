@@ -118,7 +118,7 @@ class BicepCurlEvaluator extends BaseEvaluator {
         bool isRushed = false;
         if (repMovementStartTime != null) {
           final durationMs = DateTime.now().difference(repMovementStartTime!).inMilliseconds;
-          if (durationMs < 2500) isRushed = true; 
+          if (durationMs < 2000) isRushed = true; 
         }
         repMovementStartTime = null; 
         

@@ -290,10 +290,21 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
           _countdownSeconds--;
           
           if ((_currentPhase == SessionPhase.prep || _currentPhase == SessionPhase.rest)) {
+            final currentExerciseName = widget.routine.isNotEmpty ? widget.routine[_currentExerciseIndex].name : "the exercise";
+
             if (_countdownSeconds == 10) {
               AudioService.instance.speakPriority([
                 "Ten seconds remaining.",
-                "Ten seconds to go."
+                "Ten seconds to go.",
+                "Less than ten seconds left.",
+              ]);
+            } else if (_countdownSeconds == 7) {
+              // --- NEW: 7-SECOND STARTING POSITION WARNING ---
+              AudioService.instance.speakPriority([
+                "Assume the starting position for $currentExerciseName.",
+                "Seven seconds. Get into position.",
+                "Set up for $currentExerciseName now.",
+                "Move into your starting form."
               ]);
             } else if (_countdownSeconds <= 3 && _countdownSeconds > 0) {
               AudioService.instance.playLeadInBeep();

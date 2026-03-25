@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-import '../main.dart'; 
-import '../services/audio_service.dart';
+import '../main.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -14,13 +13,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   int _prepTime = 10;
   int _restTime = 30;
-  bool _autoRecord = false;
-  
-  bool _masterSound = true;
-  bool _leadInBeeps = true;
-  bool _repChime = true;     // NEW
-  bool _metronome = true;    // NEW
-  double _volume = 0.5;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -33,199 +26,135 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {
       _prepTime = prefs.getInt('prep_time') ?? 10;
       _restTime = prefs.getInt('rest_time') ?? 30;
-      _autoRecord = prefs.getBool('auto_record') ?? false;
-      
-      _masterSound = prefs.getBool('master_sound') ?? true;
-      _leadInBeeps = prefs.getBool('leadin_beeps') ?? true;
-      _repChime = prefs.getBool('rep_chime') ?? true;       // NEW
-      _metronome = prefs.getBool('metronome') ?? true;      // NEW
-      _volume = prefs.getDouble('audio_volume') ?? 0.5;
+      _isLoading = false;
     });
   }
 
-  Future<void> _updatePrepTime(int? newValue) async {
-    if (newValue == null) return;
+  Future<void> _saveSetting(String key, int value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('prep_time', newValue);
-    setState(() => _prepTime = newValue);
+    await prefs.setInt(key, value);
   }
 
-  Future<void> _updateRestTime(int? newValue) async {
-    if (newValue == null) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('rest_time', newValue);
-    setState(() => _restTime = newValue);
-  }
+  Widget _buildSliderSetting({
+    required String title,
+    required String keyName,
+    required int currentValue,
+    required int maxLimit,
+    required Function(int) onChanged,
+  }) {
+    TextEditingController controller = TextEditingController(text: currentValue.toString());
+    double sliderValue = currentValue.toDouble().clamp(1.0, maxLimit.toDouble());
 
-  Future<void> _toggleBool(String key, bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(key, value);
-    setState(() {
-      if (key == 'auto_record') _autoRecord = value;
-    });
+    return StatefulBuilder(
+      builder: (context, setInnerState) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: darkSlate,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: mintGreen,
+                        inactiveTrackColor: Colors.grey.shade800,
+                        thumbColor: Colors.white,
+                        overlayColor: mintGreen.withOpacity(0.2),
+                      ),
+                      child: Slider(
+                        value: sliderValue,
+                        min: 1,
+                        max: maxLimit.toDouble(),
+                        divisions: maxLimit - 1,
+                        onChanged: (val) {
+                          setInnerState(() {
+                            sliderValue = val;
+                            controller.text = val.toInt().toString();
+                          });
+                          onChanged(val.toInt());
+                          _saveSetting(keyName, val.toInt());
+                        },
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 60,
+                    child: TextField(
+                      controller: controller,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 8),
+                        enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                        focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: mintGreen)),
+                      ),
+                      onChanged: (val) {
+                        int? parsed = int.tryParse(val);
+                        if (parsed != null) {
+                          setInnerState(() {
+                            sliderValue = parsed.toDouble().clamp(1.0, maxLimit.toDouble());
+                          });
+                          onChanged(parsed);
+                          _saveSetting(keyName, parsed);
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text("sec", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                ],
+              ),
+            ],
+          ),
+        );
+      }
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(backgroundColor: navyBlue, body: Center(child: CircularProgressIndicator(color: mintGreen)));
+    }
+
     return Scaffold(
+      backgroundColor: navyBlue,
       appBar: AppBar(
-        title: const Text('Settings'),
-        centerTitle: false,
+        backgroundColor: navyBlue,
+        title: const Text('SETTINGS', style: TextStyle(color: mintGreen, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // --- TIMERS ---
-          const Text('SESSION TIMERS', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(color: darkSlate, borderRadius: BorderRadius.circular(12)),
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.timer, color: mintGreen),
-                  title: const Text('Preparation Time', style: TextStyle(color: Colors.white)),
-                  subtitle: const Text('Countdown before first exercise', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  trailing: DropdownButton<int>(
-                    value: _prepTime,
-                    dropdownColor: navyBlue,
-                    style: const TextStyle(color: mintGreen, fontWeight: FontWeight.bold),
-                    underline: const SizedBox(),
-                    items: const [
-                      DropdownMenuItem(value: 5, child: Text('5 sec')),
-                      DropdownMenuItem(value: 10, child: Text('10 sec')),
-                      DropdownMenuItem(value: 15, child: Text('15 sec')),
-                    ],
-                    onChanged: _updatePrepTime,
-                  ),
-                ),
-                Divider(color: Colors.grey.withOpacity(0.2), height: 1),
-                ListTile(
-                  leading: const Icon(Icons.hourglass_bottom, color: mintGreen),
-                  title: const Text('Rest Duration', style: TextStyle(color: Colors.white)),
-                  subtitle: const Text('Break between exercises', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  trailing: DropdownButton<int>(
-                    value: _restTime,
-                    dropdownColor: navyBlue,
-                    style: const TextStyle(color: mintGreen, fontWeight: FontWeight.bold),
-                    underline: const SizedBox(),
-                    items: const [
-                      DropdownMenuItem(value: 15, child: Text('15 sec')),
-                      DropdownMenuItem(value: 30, child: Text('30 sec')),
-                      DropdownMenuItem(value: 45, child: Text('45 sec')),
-                      DropdownMenuItem(value: 60, child: Text('60 sec')),
-                    ],
-                    onChanged: _updateRestTime,
-                  ),
-                ),
-              ],
-            ),
+          _buildSliderSetting(
+            title: "Preparation Time",
+            keyName: "prep_time",
+            currentValue: _prepTime,
+            maxLimit: 60, // Max 60 seconds prep
+            onChanged: (val) => _prepTime = val,
           ),
-          
-          const SizedBox(height: 24),
-
-          // --- AUDIO SETTINGS ---
-          const Text('AUDIO SETTINGS', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(color: darkSlate, borderRadius: BorderRadius.circular(12)),
-            child: Column(
-              children: [
-                SwitchListTile(
-                  activeColor: mintGreen,
-                  title: const Text('Master Audio', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  subtitle: const Text('Enable all app sounds', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  value: _masterSound,
-                  onChanged: (val) async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('master_sound', val);
-                    setState(() => _masterSound = val);
-                    await AudioService.instance.loadSettings();
-                  },
-                ),
-                Divider(color: Colors.grey.withOpacity(0.2), height: 1),
-                SwitchListTile(
-                  activeColor: mintGreen,
-                  title: const Text('Rep Completion Chime', style: TextStyle(color: Colors.white)),
-                  subtitle: const Text('Plays when a rep is successfully counted', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  value: _repChime,
-                  onChanged: !_masterSound ? null : (val) async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('rep_chime', val);
-                    setState(() => _repChime = val);
-                    await AudioService.instance.loadSettings();
-                  },
-                ),
-                Divider(color: Colors.grey.withOpacity(0.2), height: 1),
-                SwitchListTile(
-                  activeColor: mintGreen,
-                  title: const Text('Duration Metronome', style: TextStyle(color: Colors.white)),
-                  subtitle: const Text('Ticks every second during timed holds', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  value: _metronome,
-                  onChanged: !_masterSound ? null : (val) async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('metronome', val);
-                    setState(() => _metronome = val);
-                    await AudioService.instance.loadSettings();
-                  },
-                ),
-                Divider(color: Colors.grey.withOpacity(0.2), height: 1),
-                SwitchListTile(
-                  activeColor: mintGreen,
-                  title: const Text('Lead-In Beeps', style: TextStyle(color: Colors.white)),
-                  subtitle: const Text('3-second countdown before a set begins', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  value: _leadInBeeps,
-                  onChanged: !_masterSound ? null : (val) async {
-                    final prefs = await SharedPreferences.getInstance();
-                    await prefs.setBool('leadin_beeps', val);
-                    setState(() => _leadInBeeps = val);
-                    await AudioService.instance.loadSettings();
-                  },
-                ),
-                Divider(color: Colors.grey.withOpacity(0.2), height: 1),
-                ListTile(
-                  enabled: _masterSound,
-                  leading: const Icon(Icons.volume_up, color: mintGreen),
-                  title: const Text('App Volume', style: TextStyle(color: Colors.white)),
-                  subtitle: Slider(
-                    activeColor: mintGreen,
-                    inactiveColor: navyBlue,
-                    value: _volume,
-                    min: 0.0,
-                    max: 1.0,
-                    divisions: 10,
-                    onChanged: !_masterSound ? null : (val) {
-                      setState(() => _volume = val);
-                    },
-                    onChangeEnd: (val) async {
-                      final prefs = await SharedPreferences.getInstance();
-                      await prefs.setDouble('audio_volume', val);
-                      await AudioService.instance.loadSettings();
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // --- APP PREFERENCES ---
-          const Text('APP PREFERENCES', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(color: darkSlate, borderRadius: BorderRadius.circular(12)),
-            child: Column(
-              children: [
-                SwitchListTile(
-                  activeColor: mintGreen,
-                  title: const Text('Auto-Record Sessions', style: TextStyle(color: Colors.white)),
-                  subtitle: const Text('Save video to device for review', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  value: _autoRecord,
-                  onChanged: (val) => _toggleBool('auto_record', val),
-                ),
-              ],
-            ),
+          const SizedBox(height: 16),
+          _buildSliderSetting(
+            title: "Rest Time Between Sets",
+            keyName: "rest_time",
+            currentValue: _restTime,
+            maxLimit: 180, // Max 3 minutes rest
+            onChanged: (val) => _restTime = val,
           ),
         ],
       ),

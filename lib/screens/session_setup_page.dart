@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart'; 
 import 'pose_camera_page.dart';
@@ -21,6 +22,7 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
     'Bench Dip',
     'Bicep Curl',
     'Squat',
+    'Lunge',
     'Plank'
   ];
 
@@ -30,11 +32,9 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
     _loadData();
   }
 
-  // --- PERSISTENCE LOGIC (Active Routine & Templates) ---
   Future<void> _loadData() async {
     final prefs = await SharedPreferences.getInstance();
     
-    // 1. Load active routine
     final String? savedRoutineStr = prefs.getString('saved_routine');
     if (savedRoutineStr != null) {
       try {
@@ -45,7 +45,6 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
       }
     }
 
-    // 2. Load templates dictionary
     final String? templatesStr = prefs.getString('saved_templates');
     if (templatesStr != null) {
       try {
@@ -72,14 +71,40 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
 
   Future<void> _saveTemplates() async {
     final prefs = await SharedPreferences.getInstance();
-    // Convert Map<String, List<WorkoutSet>> to Map<String, List<Map>> for JSON
     final Map<String, dynamic> serializableMap = _templates.map((key, value) {
       return MapEntry(key, value.map((e) => e.toJson()).toList());
     });
     await prefs.setString('saved_templates', jsonEncode(serializableMap));
   }
 
-  // --- TEMPLATE MANAGER UI ---
+  void _confirmDeleteTemplate(String templateName, StateSetter setSheetState) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: darkSlate,
+        title: const Text('DELETE TEMPLATE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Text('Permanently delete the "$templateName" template?', style: const TextStyle(color: Colors.grey)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: neonRed, foregroundColor: Colors.white),
+            onPressed: () {
+              setSheetState(() {
+                _templates.remove(templateName);
+              });
+              _saveTemplates();
+              Navigator.pop(context); 
+            },
+            child: const Text('DELETE', style: TextStyle(fontWeight: FontWeight.bold)),
+          )
+        ],
+      ),
+    );
+  }
+
   void _showTemplateManager() {
     showModalBottomSheet(
       context: context,
@@ -97,10 +122,9 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                   const Text("TEMPLATES", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
                   const SizedBox(height: 16),
                   
-                  // Save Current Button
                   if (_routine.isNotEmpty)
                     ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: mintGreen, foregroundColor: Colors.black),
+                      style: ElevatedButton.styleFrom(backgroundColor: mintGreen, foregroundColor: navyBlue),
                       icon: const Icon(Icons.save),
                       label: const Text("SAVE CURRENT AS TEMPLATE", style: TextStyle(fontWeight: FontWeight.bold)),
                       onPressed: () {
@@ -111,7 +135,6 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                   
                   const Divider(color: Colors.grey, height: 32),
                   
-                  // List of saved templates
                   _templates.isEmpty 
                     ? const Padding(
                         padding: EdgeInsets.all(16.0),
@@ -128,16 +151,11 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                               subtitle: Text("${_templates[templateName]!.length} Exercises", style: const TextStyle(color: mintGreen)),
                               trailing: IconButton(
                                 icon: const Icon(Icons.delete, color: neonRed),
-                                onPressed: () {
-                                  setSheetState(() {
-                                    _templates.remove(templateName);
-                                  });
-                                  _saveTemplates();
-                                },
+                                onPressed: () => _confirmDeleteTemplate(templateName, setSheetState),
                               ),
                               onTap: () {
                                 setState(() {
-                                  // Deep copy the template so modifying the active routine doesn't alter the saved template
+                                  // We generate fresh IDs when loading a template so they don't share memory references
                                   _routine = _templates[templateName]!.map((e) => WorkoutSet(name: e.name, target: e.target, isDuration: e.isDuration)).toList();
                                 });
                                 _saveActiveRoutine();
@@ -176,11 +194,10 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: mintGreen, foregroundColor: Colors.black),
+            style: ElevatedButton.styleFrom(backgroundColor: mintGreen, foregroundColor: navyBlue),
             onPressed: () {
               if (nameController.text.isNotEmpty) {
                 setState(() {
-                  // Deep copy the active routine into the templates map
                   _templates[nameController.text] = _routine.map((e) => WorkoutSet(name: e.name, target: e.target, isDuration: e.isDuration)).toList();
                 });
                 _saveTemplates();
@@ -194,7 +211,6 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
     );
   }
 
-  // --- EXERCISE MANAGEMENT UI ---
   void _confirmDelete(int index) {
     showDialog(
       context: context,
@@ -225,15 +241,17 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
 
   void _showAddEditDialog({WorkoutSet? existingSet, int? index}) {
     String selectedName = existingSet?.name ?? _availableExercises.first;
-    TextEditingController targetController = TextEditingController(text: existingSet?.target.toString() ?? '10');
+    bool isDuration = selectedName.toLowerCase() == 'plank';
+    
+    int initialTarget = existingSet?.target ?? (isDuration ? 60 : 10);
+    double sliderValue = initialTarget.toDouble().clamp(1.0, 300.0);
+    TextEditingController targetController = TextEditingController(text: initialTarget.toString());
 
     showDialog(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            bool isDuration = selectedName.toLowerCase() == 'plank';
-
             return AlertDialog(
               backgroundColor: darkSlate,
               title: Text(existingSet == null ? 'ADD EXERCISE' : 'EDIT EXERCISE', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -250,22 +268,57 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                         setDialogState(() {
                           selectedName = val;
                           isDuration = selectedName.toLowerCase() == 'plank';
-                          if (isDuration && targetController.text == '10') targetController.text = '60';
-                          if (!isDuration && targetController.text == '60') targetController.text = '10';
+                          
+                          int newTarget = isDuration ? 60 : 10;
+                          sliderValue = newTarget.toDouble();
+                          targetController.text = newTarget.toString();
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  TextField(
+                    controller: targetController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                    decoration: InputDecoration(
+                      labelText: isDuration ? 'Target (Seconds)' : 'Target (Reps)',
+                      labelStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+                      enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
+                      focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: mintGreen)),
+                    ),
+                    onChanged: (val) {
+                      int? parsed = int.tryParse(val);
+                      if (parsed != null) {
+                        setDialogState(() {
+                          sliderValue = parsed.toDouble().clamp(1.0, 300.0);
                         });
                       }
                     },
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: targetController,
-                    keyboardType: TextInputType.number,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: isDuration ? 'Target (Seconds)' : 'Target (Reps)',
-                      labelStyle: const TextStyle(color: Colors.grey),
-                      enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
-                      focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: mintGreen)),
+                  
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor: mintGreen,
+                      inactiveTrackColor: Colors.grey.shade800,
+                      thumbColor: Colors.white,
+                      overlayColor: mintGreen.withOpacity(0.2),
+                    ),
+                    child: Slider(
+                      value: sliderValue,
+                      min: 1,
+                      max: 300, 
+                      divisions: 299,
+                      onChanged: (val) {
+                        setDialogState(() {
+                          sliderValue = val;
+                          targetController.text = val.toInt().toString();
+                        });
+                      },
                     ),
                   ),
                 ],
@@ -273,16 +326,19 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
               actions: [
                 TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL', style: TextStyle(color: Colors.grey))),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: mintGreen, foregroundColor: Colors.black),
+                  style: ElevatedButton.styleFrom(backgroundColor: mintGreen, foregroundColor: navyBlue),
                   onPressed: () {
                     final target = int.tryParse(targetController.text) ?? (isDuration ? 60 : 10);
-                    final newSet = WorkoutSet(name: selectedName, target: target, isDuration: isDuration);
-
+                    
                     setState(() {
                       if (index != null) {
-                        _routine[index] = newSet;
+                        // Keep original ID if editing
+                        _routine[index].name = selectedName;
+                        _routine[index].target = target;
+                        _routine[index].isDuration = isDuration;
                       } else {
-                        _routine.add(newSet);
+                        // Generates a fresh unique ID automatically
+                        _routine.add(WorkoutSet(name: selectedName, target: target, isDuration: isDuration));
                       }
                     });
                     
@@ -299,7 +355,6 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
     );
   }
 
-  // --- WIDGET RENDERERS ---
   Widget _buildAddButton() {
     return ElevatedButton.icon(
       style: ElevatedButton.styleFrom(
@@ -318,13 +373,13 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: mintGreen)));
+      return const Scaffold(backgroundColor: navyBlue, body: Center(child: CircularProgressIndicator(color: mintGreen)));
     }
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: navyBlue, 
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: navyBlue, 
         title: const Text('SESSION SETUP', style: TextStyle(color: mintGreen, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
         elevation: 0,
         actions: [
@@ -336,10 +391,12 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
         ],
       ),
       body: _routine.isEmpty 
-          ? Center(child: _buildAddButton()) // Centered if empty
+          ? Center(child: _buildAddButton()) 
           : ReorderableListView.builder(
               padding: const EdgeInsets.only(bottom: 100, top: 16),
               itemCount: _routine.length,
+              // Requires items to be dragged instantly by the handle instead of long-pressing the whole card
+              buildDefaultDragHandles: false, 
               onReorder: (oldIndex, newIndex) {
                 setState(() {
                   if (newIndex > oldIndex) newIndex -= 1;
@@ -348,16 +405,16 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                 });
                 _saveActiveRoutine(); 
               },
-              // The Footer naturally places the Add button at the end of the scrollable list
               footer: Padding(
-                key: const Key("add_button_footer"), // Keys are required in ReorderableListView
+                key: const Key("add_button_footer"),
                 padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
                 child: Center(child: _buildAddButton()),
               ),
               itemBuilder: (context, index) {
                 final item = _routine[index];
                 return Card(
-                  key: ValueKey(item.hashCode), 
+                  // Now driven by an absolute unique identifier
+                  key: ValueKey(item.id), 
                   color: darkSlate,
                   margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   child: ListTile(
@@ -384,19 +441,25 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
                           icon: const Icon(Icons.delete_outline, color: neonRed),
                           onPressed: () => _confirmDelete(index),
                         ),
-                        const Icon(Icons.drag_handle, color: Colors.grey),
+                        // --- THE FIX: The functional drag handle ---
+                        ReorderableDragStartListener(
+                          index: index,
+                          child: const Padding(
+                            padding: EdgeInsets.only(left: 8.0, right: 8.0),
+                            child: Icon(Icons.drag_handle, color: Colors.grey),
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 );
               },
             ),
-      // The floating action button is now strictly used for Starting the session
-      floatingActionButton: _routine.isEmpty ? null : FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton.extended(
         heroTag: 'start_btn',
-        backgroundColor: mintGreen,
-        foregroundColor: Colors.black,
-        onPressed: () {
+        backgroundColor: _routine.isEmpty ? Colors.grey.shade800 : mintGreen,
+        foregroundColor: _routine.isEmpty ? Colors.grey.shade500 : navyBlue,
+        onPressed: _routine.isEmpty ? null : () {
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => PoseCameraPage(routine: _routine)),
@@ -410,25 +473,30 @@ class _SessionSetupPageState extends State<SessionSetupPage> {
   }
 }
 
-// --- WORKOUT SET MODEL ---
+// --- WORKOUT SET MODEL (Now with Immutable Unique IDs) ---
 class WorkoutSet {
+  final String id; 
   String name;
   int target;
   bool isDuration;
 
   WorkoutSet({
+    String? id,
     required this.name,
     required this.target,
     this.isDuration = false,
-  });
+  }) : id = id ?? DateTime.now().microsecondsSinceEpoch.toString(); 
 
   Map<String, dynamic> toJson() => {
+    'id': id,
     'name': name,
     'target': target,
     'isDuration': isDuration,
   };
 
+  // The 'id' check handles backward compatibility in case you load an old save that didn't have an ID
   factory WorkoutSet.fromJson(Map<String, dynamic> json) => WorkoutSet(
+    id: json['id'] as String?,
     name: json['name'] as String,
     target: json['target'] as int,
     isDuration: json['isDuration'] as bool,
