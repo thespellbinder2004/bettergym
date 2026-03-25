@@ -38,7 +38,8 @@ class BicepCurlEvaluator extends BaseEvaluator {
 
     if (elbowAngle < lowestElbowAngle) lowestElbowAngle = elbowAngle;
 
-    double rawFormScore = ((25.0 - shoulderSwingAngle) / 25.0).clamp(0.0, 1.0);
+    // Relaxed scoring threshold for swing
+    double rawFormScore = ((30.0 - shoulderSwingAngle) / 30.0).clamp(0.0, 1.0);
     smoothedFormScore = (smoothedFormScore * 0.8) + (rawFormScore * 0.2);
 
     int rawFormState = 1; 
@@ -47,7 +48,7 @@ class BicepCurlEvaluator extends BaseEvaluator {
     List<String> ttsVariations = [];
 
     // 3. Clinical Heuristics
-    // A. Perspective Lock (Explicit reasoning)
+    // A. Perspective Lock 
     if (shoulderWidth > torsoLength * 0.6) {
       rawFormState = -1;
       rawFaultyJoints.addAll(activeJoints);
@@ -59,8 +60,8 @@ class BicepCurlEvaluator extends BaseEvaluator {
         ];
       }
     }
-    // B. Trunk Sway (Protect the Lumbar Spine)
-    else if (horizontalSway > torsoLength * 0.20) {
+    // B. Trunk Sway (Relaxed to 25% of torso length to allow natural bracing)
+    else if (horizontalSway > torsoLength * 0.25) {
       rawFormState = -1;
       rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip]);
       if (rawFormError.isEmpty) {
@@ -68,8 +69,8 @@ class BicepCurlEvaluator extends BaseEvaluator {
         ttsVariations = ["Stop leaning back. Keep your torso still.", "Don't use your back to lift the weight."];
       }
     }
-    // C. Elbow Pin (Stationary Upper Arm)
-    else if (shoulderSwingAngle > 25.0) {
+    // C. Elbow Pin (Relaxed to 30 degrees to allow natural biomechanical shift)
+    else if (shoulderSwingAngle > 30.0) {
       rawFormState = -1;
       rawFaultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow, PoseLandmarkType.rightHip, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow]);
       if (rawFormError.isEmpty) {
@@ -83,11 +84,11 @@ class BicepCurlEvaluator extends BaseEvaluator {
       rawFormError: rawFormError, 
       rawFaultyJoints: rawFaultyJoints, 
       ttsVariations: ttsVariations, 
-      amnesiaConditionMet: elbowAngle >= 150.0 
+      amnesiaConditionMet: elbowAngle >= 145.0 
     );
 
     // --- START THE STOPWATCH ---
-    if (elbowAngle < 140.0 && repMovementStartTime == null) {
+    if (elbowAngle < 135.0 && repMovementStartTime == null) {
       repMovementStartTime = DateTime.now();
     }
 
@@ -99,27 +100,29 @@ class BicepCurlEvaluator extends BaseEvaluator {
     // For Curls: isDown = true means arm is fully extended. isDown = false means curled up.
     if (isDown) {
       repFeedback = "Curl it up!";
-      if (elbowAngle < 50.0) { 
-        isDown = false; // Halfway point reached
+      // Adjusted from 50.0 to 70.0 to account for bicep mass and dumbbell occlusion
+      if (elbowAngle <= 70.0) { 
+        isDown = false; // Top of the rep reached
       }
     } else {
       repFeedback = "Lower the weight fully.";
-      if (elbowAngle > 150.0) { 
+      // Adjusted from 150.0 to 145.0 to account for camera perspective on full extension
+      if (elbowAngle >= 145.0) { 
         isDown = true; // Rep Cycle Complete
         lowestElbowAngle = 180.0;
 
-        // CHECK THE SPEED LIMIT
+        // --- CHECK THE 2.5 SECOND SPEED LIMIT ---
         bool isRushed = false;
         if (repMovementStartTime != null) {
           final durationMs = DateTime.now().difference(repMovementStartTime!).inMilliseconds;
-          if (durationMs < 1500) isRushed = true; 
+          if (durationMs < 2500) isRushed = true; // Bumped to 2.5 seconds
         }
         repMovementStartTime = null; 
         
         if (isRushed) {
           badRep = true;
           repFeedback = "Too fast! Control the descent.";
-          AudioService.instance.speakCorrection(["Slow down.", "Control the weight on the way down."]);
+          AudioService.instance.speakCorrection(["Slow down.", "Control the weight on the way down.", "Too fast. Time under tension."]);
         } else if (hasFormBrokenThisRep) {
           badRep = true;
           repFeedback = "Rep invalid. Watch form!";
@@ -128,8 +131,8 @@ class BicepCurlEvaluator extends BaseEvaluator {
           repFeedback = "Good squeeze!";
         }
       } else {
-        // Half-Rep Detection
-        if (elbowAngle < 70.0 && lowestElbowAngle > 110.0) {
+        // Half-Rep Detection (if they don't go all the way down before curling back up)
+        if (elbowAngle <= 80.0 && lowestElbowAngle > 100.0) {
           AudioService.instance.speakCorrection(["Extend your arms fully at the bottom.", "Full range of motion."]);
           lowestElbowAngle = 50.0; 
         }
