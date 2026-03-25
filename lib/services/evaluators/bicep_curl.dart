@@ -3,7 +3,7 @@ import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import '../audio_service.dart';
 import '../biomechanics_engine.dart';
 
-class BicepCurlEvaluator extends BaseEvaluator {
+class BenchDipEvaluator extends BaseEvaluator {
   @override
   Map<String, dynamic> evaluate(Pose pose) {
     final landmarks = pose.landmarks;
@@ -17,29 +17,32 @@ class BicepCurlEvaluator extends BaseEvaluator {
     final elbow = isLeftVisible ? landmarks[PoseLandmarkType.leftElbow] : landmarks[PoseLandmarkType.rightElbow];
     final wrist = isLeftVisible ? landmarks[PoseLandmarkType.leftWrist] : landmarks[PoseLandmarkType.rightWrist];
     final hip = isLeftVisible ? landmarks[PoseLandmarkType.leftHip] : landmarks[PoseLandmarkType.rightHip];
+    final knee = isLeftVisible ? landmarks[PoseLandmarkType.leftKnee] : landmarks[PoseLandmarkType.rightKnee]; 
 
     final activeJoints = <PoseLandmarkType>{
       PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder,
       PoseLandmarkType.leftElbow, PoseLandmarkType.rightElbow,
       PoseLandmarkType.leftWrist, PoseLandmarkType.rightWrist,
       PoseLandmarkType.leftHip, PoseLandmarkType.rightHip,
+      PoseLandmarkType.leftKnee, PoseLandmarkType.rightKnee,
     };
 
-    if (shoulder == null || elbow == null || wrist == null || hip == null || shoulder.likelihood < 0.5 || elbow.likelihood < 0.5) {
+    if (shoulder == null || elbow == null || wrist == null || hip == null || knee == null || shoulder.likelihood < 0.5 || hip.likelihood < 0.5) {
       return {'goodRepTriggered': false, 'badRepTriggered': false, 'formState': 0, 'feedback': "Align side profile to camera.", 'activeJoints': activeJoints, 'faultyJoints': <PoseLandmarkType>{}, 'formScore': 0.0};
     }
 
     final shoulderWidth = (leftShoulder.x - rightShoulder.x).abs();
     final torsoLength = math.sqrt(math.pow(shoulder.x - hip.x, 2) + math.pow(shoulder.y - hip.y, 2));
+    final torsoDx = (shoulder.x - hip.x).abs();
+    final torsoDy = (shoulder.y - hip.y).abs();
+    final horizontalDrift = (hip.x - wrist.x).abs(); 
 
-    final elbowAngle = calculateAngle(shoulder, elbow, wrist);
-    final shoulderSwingAngle = calculateAngle(hip, shoulder, elbow);
-    final horizontalSway = (shoulder.x - hip.x).abs();
-
+    final elbowAngle = calculateAngle(shoulder, elbow, wrist); 
     if (elbowAngle < lowestElbowAngle) lowestElbowAngle = elbowAngle;
 
-    // Relaxed scoring threshold for swing
-    double rawFormScore = ((30.0 - shoulderSwingAngle) / 30.0).clamp(0.0, 1.0);
+    // Adjusted Thermometer Smoothing to match the new 100-degree depth
+    double elbowScore = ((elbowAngle - 100.0) / 60.0).clamp(0.0, 1.0);
+    double rawFormScore = elbowScore;
     smoothedFormScore = (smoothedFormScore * 0.8) + (rawFormScore * 0.2);
 
     int rawFormState = 1; 
@@ -47,94 +50,99 @@ class BicepCurlEvaluator extends BaseEvaluator {
     Set<PoseLandmarkType> rawFaultyJoints = {};
     List<String> ttsVariations = [];
 
-    // 3. Clinical Heuristics
-    // A. Perspective Lock 
-    if (shoulderWidth > torsoLength * 0.6) {
+    if (shoulderWidth > torsoLength * 0.55) {
       rawFormState = -1;
-      rawFaultyJoints.addAll(activeJoints);
-      if (rawFormError.isEmpty) {
-        rawFormError = "Face sideways.";
-        ttsVariations = [
-          "Face sideways. The camera cannot track your elbow angle from the front.", 
-          "Turn to the side. I need to see your arm bend."
-        ];
-      }
-    }
-    // B. Trunk Sway (Relaxed to 25% of torso length to allow natural bracing)
-    else if (horizontalSway > torsoLength * 0.25) {
+      rawFaultyJoints.addAll(activeJoints); 
+      rawFormError = "Turn sideways.";
+      ttsVariations = [
+        "Turn sideways.", 
+        "Please face the side.",
+        "Side profile needed."
+      ];
+    } else if (torsoDx > torsoDy) {
       rawFormState = -1;
       rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip]);
-      if (rawFormError.isEmpty) {
-        rawFormError = "Stop leaning back.";
-        ttsVariations = ["Stop leaning back. Keep your torso still.", "Don't use your back to lift the weight."];
-      }
-    }
-    // C. Elbow Pin (Relaxed to 30 degrees to allow natural biomechanical shift)
-    else if (shoulderSwingAngle > 30.0) {
+      rawFormError = "Sit upright.";
+      ttsVariations = [
+        "Sit upright.", 
+        "Don't lean forward.",
+        "Chest up.",
+        "Keep your back straight."
+      ];
+    } else if (horizontalDrift > torsoLength * 0.55) { // Relaxed from 0.45 to 0.55
       rawFormState = -1;
-      rawFaultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow, PoseLandmarkType.rightHip, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow]);
-      if (rawFormError.isEmpty) {
-        rawFormError = "Stop swinging.";
-        ttsVariations = ["Keep elbows pinned to your ribs.", "Lock your elbows. Stop swinging forward."];
-      }
+      rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip]);
+      rawFormError = "Hips drifting forward.";
+      ttsVariations = [
+        "Stay close to the bench.", 
+        "Don't drift forward.", 
+        "Hips back.",
+        "Keep your back near the bench."
+      ];
     }
 
     processFormState(
-      rawFormState: rawFormState, 
-      rawFormError: rawFormError, 
-      rawFaultyJoints: rawFaultyJoints, 
-      ttsVariations: ttsVariations, 
-      amnesiaConditionMet: elbowAngle >= 145.0 
+      rawFormState: rawFormState, rawFormError: rawFormError, 
+      rawFaultyJoints: rawFaultyJoints, ttsVariations: ttsVariations, 
+      amnesiaConditionMet: elbowAngle >= 145.0 // Relaxed amnesia threshold
     );
 
     // --- START THE STOPWATCH ---
-    if (elbowAngle < 135.0 && repMovementStartTime == null) {
+    if (elbowAngle < 145.0 && repMovementStartTime == null) {
       repMovementStartTime = DateTime.now();
     }
 
-    // --- Full Cycle Rep Logic ---
     bool goodRep = false;
     bool badRep = false;
     String repFeedback = "";
 
-    // For Curls: isDown = true means arm is fully extended. isDown = false means curled up.
     if (isDown) {
-      repFeedback = "Curl it up!";
-      // Adjusted from 50.0 to 70.0 to account for bicep mass and dumbbell occlusion
-      if (elbowAngle <= 70.0) { 
-        isDown = false; // Top of the rep reached
-      }
-    } else {
-      repFeedback = "Lower the weight fully.";
-      // Adjusted from 150.0 to 145.0 to account for camera perspective on full extension
-      if (elbowAngle >= 145.0) { 
-        isDown = true; // Rep Cycle Complete
-        lowestElbowAngle = 180.0;
-
-        // --- CHECK THE 2.5 SECOND SPEED LIMIT ---
+      repFeedback = "Push up!";
+      // Relaxed lockout from 160.0 to 155.0
+      if (elbowAngle >= 155.0) {
+        isDown = false; 
+        lowestElbowAngle = 180.0; 
+        
+        // --- CHECK THE SPEED LIMIT ---
         bool isRushed = false;
         if (repMovementStartTime != null) {
           final durationMs = DateTime.now().difference(repMovementStartTime!).inMilliseconds;
-          if (durationMs < 2500) isRushed = true; // Bumped to 2.5 seconds
+          if (durationMs < 1500) isRushed = true; 
         }
         repMovementStartTime = null; 
         
         if (isRushed) {
-          badRep = true;
-          repFeedback = "Too fast! Control the descent.";
-          AudioService.instance.speakCorrection(["Slow down.", "Control the weight on the way down.", "Too fast. Time under tension."]);
+          badRep = true; 
+          repFeedback = "Too fast! Control the rep.";
+          AudioService.instance.speakCorrection([
+            "Slow down.", 
+            "Don't rush the rep.",
+            "Control your speed."
+          ]);
         } else if (hasFormBrokenThisRep) {
-          badRep = true;
-          repFeedback = "Rep invalid. Watch form!";
+          badRep = true; 
+          repFeedback = "Rep invalid. Watch your form!";
         } else {
-          goodRep = true;
-          repFeedback = "Good squeeze!";
+          goodRep = true; 
+          repFeedback = "Perfect rep!";
         }
+      }
+    } else {
+      // Relaxed depth from 90.0 to 100.0
+      if (elbowAngle <= 100.0) {
+        isDown = true; 
+        repFeedback = "Depth reached. Push!";
       } else {
-        // Half-Rep Detection (if they don't go all the way down before curling back up)
-        if (elbowAngle <= 80.0 && lowestElbowAngle > 100.0) {
-          AudioService.instance.speakCorrection(["Extend your arms fully at the bottom.", "Full range of motion."]);
-          lowestElbowAngle = 50.0; 
+        repFeedback = "Lower yourself.";
+
+        // Half-rep detection adjusted for new thresholds
+        if (elbowAngle >= 145.0 && lowestElbowAngle < 120.0) {
+          AudioService.instance.speakCorrection([
+            "Go a little lower.", 
+            "Not deep enough.", 
+            "Drop your hips more."
+          ]);
+          lowestElbowAngle = 180.0; 
         }
       }
     }
@@ -142,7 +150,7 @@ class BicepCurlEvaluator extends BaseEvaluator {
     return {
       'goodRepTriggered': goodRep, 'badRepTriggered': badRep,
       'formState': publishedFormState, 'feedback': publishedFormState == -1 ? publishedFormError : repFeedback,
-      'activeJoints': activeJoints, 'faultyJoints': publishedFaultyJoints, 'formScore': smoothedFormScore,
+      'activeJoints': activeJoints, 'faultyJoints': publishedFaultyJoints, 'formScore': smoothedFormScore,       
     };
   }
 }
