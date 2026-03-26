@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../main.dart';
 import 'session_setup_page.dart';
+import 'main_layout.dart';
+import 'progress_report_page.dart'; // Import the new dummy page
 
 // --- THE TELEMETRY DATA MODEL ---
 class ExerciseTelemetry {
@@ -9,11 +11,10 @@ class ExerciseTelemetry {
   final int target;
   int goodReps = 0;
   int badReps = 0;
-  List<double> repScores = []; // Holds the 0.0 to 1.0 score for every single rep/second
+  List<double> repScores = []; 
 
   ExerciseTelemetry({required this.name, required this.isDuration, required this.target});
 
-  // Averages all the attempts (including the 0.0s from bad reps) into a 1-100 score
   int get finalScore {
     if (repScores.isEmpty) return 0;
     double sum = repScores.fold(0, (p, c) => p + c);
@@ -35,8 +36,6 @@ class SessionSummaryPage extends StatelessWidget {
 
   int _calculateGlobalScore() {
     if (telemetryData.isEmpty) return 0;
-    
-    // Only average the sets that the user actually attempted
     final attemptedSets = telemetryData.where((t) => t.repScores.isNotEmpty).toList();
     if (attemptedSets.isEmpty) return 0;
 
@@ -56,9 +55,17 @@ class SessionSummaryPage extends StatelessWidget {
     return "$twoDigitMinutes:$twoDigitSeconds";
   }
 
+  Color _getScoreColor(int score) {
+    if (score > 75) return mintGreen;
+    if (score > 50) return Colors.orangeAccent;
+    return neonRed;
+  }
+
   @override
   Widget build(BuildContext context) {
     final int globalScore = _calculateGlobalScore();
+    final Color scoreColor = _getScoreColor(globalScore);
+    
     final int totalSets = telemetryData.length;
     final int attemptedSets = telemetryData.where((t) => t.repScores.isNotEmpty).length;
     final int completedSets = isCompleted ? totalSets : (attemptedSets > 0 ? attemptedSets - 1 : 0);
@@ -67,34 +74,37 @@ class SessionSummaryPage extends StatelessWidget {
       backgroundColor: navyBlue,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 40.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // --- HEADER (Strictly Neutral) ---
+              // --- HEADER ---
               Text(
                 isCompleted ? "SESSION COMPLETE" : "SESSION ABORTED",
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: isCompleted ? mintGreen : Colors.orangeAccent,
-                  fontSize: 28,
+                  fontSize: 24,
                   fontWeight: FontWeight.bold,
                   letterSpacing: 4.0,
                 ),
               ),
               const SizedBox(height: 48),
 
-              // --- THE 1-100 SCORE ---
               Center(
                 child: Container(
-                  width: 180,
-                  height: 180,
+                  width: 200,
+                  height: 200,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: darkSlate,
-                    border: Border.all(color: globalScore > 75 ? mintGreen : (globalScore > 50 ? Colors.orangeAccent : neonRed), width: 6),
+                    color: navyBlue, 
+                    border: Border.all(color: scoreColor, width: 8),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 30, spreadRadius: 5),
+                      BoxShadow(
+                        color: scoreColor.withOpacity(0.6), 
+                        blurRadius: 40, 
+                        spreadRadius: 10
+                      ),
                     ]
                   ),
                   child: Center(
@@ -103,14 +113,16 @@ class SessionSummaryPage extends StatelessWidget {
                       children: [
                         Text(
                           globalScore.toString(),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 72,
+                          style: TextStyle(
+                            color: scoreColor,
+                            fontSize: 80,
                             fontWeight: FontWeight.bold,
-                            height: 1.0
+                            height: 1.0,
+                            shadows: [Shadow(color: scoreColor.withOpacity(0.5), blurRadius: 20)]
                           ),
                         ),
-                        const Text("SCORE", style: TextStyle(color: Colors.grey, fontSize: 14, letterSpacing: 2.0)),
+                        const SizedBox(height: 4),
+                        const Text("SCORE", style: TextStyle(color: Colors.white70, fontSize: 14, letterSpacing: 3.0, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
@@ -118,12 +130,12 @@ class SessionSummaryPage extends StatelessWidget {
               ),
               const SizedBox(height: 64),
 
-              // --- TELEMETRY GRID ---
+              // --- TELEMETRY GRID (Spaced & Scaled properly) ---
               Row(
                 children: [
                   Expanded(
                     child: _buildStatCard(
-                      title: "SETS COMPLETED",
+                      title: "SETS",
                       value: "$completedSets / $totalSets",
                       icon: Icons.layers,
                     ),
@@ -131,7 +143,7 @@ class SessionSummaryPage extends StatelessWidget {
                   const SizedBox(width: 16),
                   Expanded(
                     child: _buildStatCard(
-                      title: "TOTAL VOLUME",
+                      title: "VOLUME",
                       value: _calculateTotalVolume().toString(),
                       icon: Icons.fitness_center,
                     ),
@@ -143,28 +155,67 @@ class SessionSummaryPage extends StatelessWidget {
                 title: "TOTAL DURATION",
                 value: _formatDuration(totalDuration),
                 icon: Icons.timer,
+                isWide: true,
               ),
               
               const Spacer(),
 
-              // --- EXIT BUTTON ---
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: mintGreen,
-                  foregroundColor: navyBlue,
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              // --- DYNAMIC DUAL NAVIGATION ---
+              if (!isCompleted) ...[
+                // ABORTED STATE ROUTING
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: mintGreen,
+                    foregroundColor: navyBlue,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: () {
+                    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const SessionSetupPage()), (route) => false);
+                  },
+                  child: const Text("RETURN TO SETUP", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
                 ),
-                icon: const Icon(Icons.arrow_forward, size: 28),
-                label: const Text("CONTINUE", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
-                onPressed: () {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (_) => const SessionSetupPage()),
-                    (route) => false,
-                  );
-                },
-              ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(color: Colors.grey.shade700, width: 2),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: () {
+                    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainLayout()), (route) => false);
+                  },
+                  child: const Text("DASHBOARD", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
+                ),
+              ] else ...[
+                // COMPLETED STATE ROUTING
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: mintGreen,
+                    foregroundColor: navyBlue,
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const ProgressReportPage()));
+                  },
+                  child: const Text("PROGRESS REPORT", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(color: Colors.grey.shade700, width: 2),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: () {
+                    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainLayout()), (route) => false);
+                  },
+                  child: const Text("DASHBOARD", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
+                ),
+              ]
             ],
           ),
         ),
@@ -172,13 +223,14 @@ class SessionSummaryPage extends StatelessWidget {
     );
   }
 
-  Widget _buildStatCard({required String title, required String value, required IconData icon}) {
+  // Adjusted Stat Card to prevent text clipping
+  Widget _buildStatCard({required String title, required String value, required IconData icon, bool isWide = false}) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(isWide ? 24 : 20),
       decoration: BoxDecoration(
         color: darkSlate,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.withOpacity(0.2)),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -187,11 +239,16 @@ class SessionSummaryPage extends StatelessWidget {
             children: [
               Icon(icon, color: mintGreen, size: 20),
               const SizedBox(width: 8),
-              Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
+              Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
             ],
           ),
-          const SizedBox(height: 16),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          // FittedBox ensures the numbers automatically shrink instead of overflowing the container
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(value, style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
+          ),
         ],
       ),
     );
