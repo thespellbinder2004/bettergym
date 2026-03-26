@@ -8,7 +8,6 @@ class SquatEvaluator extends BaseEvaluator {
   double _lowestKneeAngle = 180.0;
   double _lowestHipRatio = 1.0; 
   
-  // Foothold Anchors
   Offset? _leftAnkleAnchor;
   Offset? _rightAnkleAnchor;
 
@@ -62,28 +61,31 @@ class SquatEvaluator extends BaseEvaluator {
 
     // --- 2. UNIVERSAL MATH & ANCHORS ---
     final kneeFlexionAngle = calculateAngle(hip, knee, ankle);
-    final neckAngle = calculateAngle(hip, shoulder, nose); // Tracks neck extension/tucking
+    final neckAngle = calculateAngle(hip, shoulder, nose); 
     
-    // Y-Axis depth ratio for front-facing squats (0.0 = hips are at knee level)
     final verticalDepthRatio = (hip.y - shoulder.y) / (knee.y - shoulder.y == 0 ? 0.001 : knee.y - shoulder.y);
 
     if (kneeFlexionAngle < _lowestKneeAngle) _lowestKneeAngle = kneeFlexionAngle;
     if (verticalDepthRatio < _lowestHipRatio) _lowestHipRatio = verticalDepthRatio;
 
-    // Anchor the feet when standing
     if (!isDown && (isFrontFacing ? verticalDepthRatio > 0.8 : kneeFlexionAngle > 160.0)) {
       _leftAnkleAnchor = Offset(leftAnkle.x, leftAnkle.y);
       _rightAnkleAnchor = Offset(rightAnkle.x, rightAnkle.y);
     }
 
-    // Check Foothold Jitter/Lift
+    // THE FIX: Occlusion Filtering & Relaxed Threshold
     bool footholdBroken = false;
     if (_leftAnkleAnchor != null && _rightAnkleAnchor != null) {
       final leftShift = math.sqrt(math.pow(leftAnkle.x - _leftAnkleAnchor!.dx, 2) + math.pow(leftAnkle.y - _leftAnkleAnchor!.dy, 2));
       final rightShift = math.sqrt(math.pow(rightAnkle.x - _rightAnkleAnchor!.dx, 2) + math.pow(rightAnkle.y - _rightAnkleAnchor!.dy, 2));
-      // If either foot moves more than 15% of torso length (filters out camera noise but catches steps/lifts)
-      if (leftShift > torsoLength * 0.15 || rightShift > torsoLength * 0.15) {
-        footholdBroken = true;
+      
+      if (isFrontFacing) {
+        // Front view: Monitor both, relaxed to 20%
+        if (leftShift > torsoLength * 0.20 || rightShift > torsoLength * 0.20) footholdBroken = true;
+      } else {
+        // Side view: Monitor ONLY the clearly visible ankle. Ignore the hidden one.
+        final visibleShift = isLeftVisible ? leftShift : rightShift;
+        if (visibleShift > torsoLength * 0.20) footholdBroken = true;
       }
     }
 
@@ -97,12 +99,19 @@ class SquatEvaluator extends BaseEvaluator {
     if (footholdBroken) {
       rawFormState = -1;
       triggerInstantKill = true; 
-      rawFaultyJoints.addAll([PoseLandmarkType.leftAnkle, PoseLandmarkType.rightAnkle]);
+      // Only highlight the visible foot/feet
+      if (isFrontFacing) {
+        rawFaultyJoints.addAll([PoseLandmarkType.leftAnkle, PoseLandmarkType.rightAnkle]);
+      } else {
+        rawFaultyJoints.add(isLeftVisible ? PoseLandmarkType.leftAnkle : PoseLandmarkType.rightAnkle);
+      }
       if (rawFormError.isEmpty) {
         rawFormError = "Foot moved.";
         ttsVariations = ["Keep your feet planted.", "Don't lift your heels or step.", "Feet flat on the floor."];
       }
-    } else if (neckAngle < 150.0) {
+    } 
+    // THE FIX: Only enforce neck strictness if facing sideways.
+    else if (!isFrontFacing && neckAngle < 150.0) {
       rawFormState = -1;
       rawFaultyJoints.addAll([PoseLandmarkType.nose, PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder]);
       if (rawFormError.isEmpty) {
@@ -188,7 +197,7 @@ class SquatEvaluator extends BaseEvaluator {
         bool isRushed = false;
         if (repMovementStartTime != null) {
           final durationMs = DateTime.now().difference(repMovementStartTime!).inMilliseconds;
-          if (durationMs < 2000) isRushed = true; // Strict 2-second TUT
+          if (durationMs < 2000) isRushed = true; 
         }
         repMovementStartTime = null; 
         
@@ -213,13 +222,15 @@ class SquatEvaluator extends BaseEvaluator {
       } else {
         repFeedback = "Drop lower...";
         
-        // Half-Rep Detection
         if (isStanding && (isFrontFacing ? _lowestHipRatio > 0.6 : _lowestKneeAngle > 110.0)) {
-          AudioService.instance.speakCorrection([
-            "Half rep. Break parallel.",
-            "Go deeper.",
-            "Drop your hips lower."
-          ]);
+          // THE FIX: Ensure form hasn't completely collapsed before yelling about half reps
+          if (publishedFormState != -1) {
+            AudioService.instance.speakCorrection([
+              "Partial rep. Break parallel.",
+              "Go deeper.",
+              "Drop your hips lower."
+            ]);
+          }
           _lowestKneeAngle = 180.0; 
           _lowestHipRatio = 1.0;
         }
