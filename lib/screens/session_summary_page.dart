@@ -244,7 +244,8 @@ class _SessionSummaryPageState extends State<SessionSummaryPage> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
                   onPressed: () => _processAndSaveData(() {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const ProgressReportPage()));
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => ProgressReportPage(telemetryData: widget.telemetryData, globalScore: globalScore, totalDuration: widget.totalDuration,
+                    )));
                   }),
                   child: const Text("PROGRESS REPORT", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
                 ),
