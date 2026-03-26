@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import '../audio_service.dart';
 import '../biomechanics_engine.dart';
@@ -180,9 +181,9 @@ class LungeEvaluator extends BaseEvaluator {
       } else {
         repFeedback = "Drop lower...";
         
-        // THE FIX: Only trigger Half Rep if they returned to a FULL STAND (>= 160) 
-        // without ever hitting the depth target (95), and actually made an attempt (< 140).
-        if (frontKneeFlexion >= 160.0 && _lowestKneeAngle < 140.0 && _lowestKneeAngle > 95.0) {
+        // THE FIX: Commitment threshold tightened from 140.0 to 120.0
+        // You must genuinely commit to the descent before it flags a half-rep
+        if (frontKneeFlexion >= 160.0 && _lowestKneeAngle <= 120.0 && _lowestKneeAngle > 95.0) {
           if (publishedFormState != -1) {
             AudioService.instance.speakCorrection([
               "Partial repetition. Drop your back knee lower.",
