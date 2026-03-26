@@ -1,23 +1,17 @@
 import 'dart:math' as math;
-import 'dart:ui';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import '../audio_service.dart';
 import '../biomechanics_engine.dart';
 
 class SquatEvaluator extends BaseEvaluator {
   double _lowestKneeAngle = 180.0;
-  double _lowestHipRatio = 1.0; 
-  
-  Offset? _leftAnkleAnchor;
-  Offset? _rightAnkleAnchor;
+  double _highestHipRatio = 0.0; 
 
   @override
   void reset() {
     super.reset();
     _lowestKneeAngle = 180.0;
-    _lowestHipRatio = 1.0;
-    _leftAnkleAnchor = null;
-    _rightAnkleAnchor = null;
+    _highestHipRatio = 0.0;
   }
 
   @override
@@ -26,7 +20,7 @@ class SquatEvaluator extends BaseEvaluator {
     final leftShoulder = landmarks[PoseLandmarkType.leftShoulder];
     final rightShoulder = landmarks[PoseLandmarkType.rightShoulder];
 
-    if (leftShoulder == null || rightShoulder == null) return {'goodRepTriggered': false, 'badRepTriggered': false, 'formState': 0, 'feedback': "Full body not visible.", 'activeJoints': <PoseLandmarkType>{}, 'faultyJoints': <PoseLandmarkType>{}, 'formScore': 0.0};
+    if (leftShoulder == null || rightShoulder == null) return _bailOut();
 
     final bool isLeftVisible = leftShoulder.likelihood > rightShoulder.likelihood;
     
@@ -39,19 +33,17 @@ class SquatEvaluator extends BaseEvaluator {
     final rightAnkle = landmarks[PoseLandmarkType.rightAnkle];
     final leftKnee = landmarks[PoseLandmarkType.leftKnee];
     final rightKnee = landmarks[PoseLandmarkType.rightKnee];
-    final nose = landmarks[PoseLandmarkType.nose];
 
     final activeJoints = <PoseLandmarkType>{
       PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder,
       PoseLandmarkType.leftHip, PoseLandmarkType.rightHip,
       PoseLandmarkType.leftKnee, PoseLandmarkType.rightKnee,
       PoseLandmarkType.leftAnkle, PoseLandmarkType.rightAnkle,
-      PoseLandmarkType.nose,
     };
 
-    if (shoulder == null || hip == null || knee == null || ankle == null || leftAnkle == null || rightAnkle == null || leftKnee == null || rightKnee == null || nose == null ||
+    if (shoulder == null || hip == null || knee == null || ankle == null || leftAnkle == null || rightAnkle == null || leftKnee == null || rightKnee == null ||
         shoulder.likelihood < 0.5 || hip.likelihood < 0.5 || knee.likelihood < 0.5) {
-      return {'goodRepTriggered': false, 'badRepTriggered': false, 'formState': 0, 'feedback': "Align body to camera.", 'activeJoints': activeJoints, 'faultyJoints': <PoseLandmarkType>{}, 'formScore': 0.0};
+      return _bailOut(activeJoints: activeJoints);
     }
 
     // --- 1. PERSPECTIVE DETECTOR ---
@@ -59,112 +51,47 @@ class SquatEvaluator extends BaseEvaluator {
     final torsoLength = math.sqrt(math.pow(shoulder.x - hip.x, 2) + math.pow(shoulder.y - hip.y, 2));
     final bool isFrontFacing = shoulderWidth > torsoLength * 0.45;
 
-    // --- 2. UNIVERSAL MATH & ANCHORS ---
+    // --- 2. DEPTH METRICS ---
     final kneeFlexionAngle = calculateAngle(hip, knee, ankle);
-    final neckAngle = calculateAngle(hip, shoulder, nose); 
     
+    // In screen coordinates, Y increases downward. 
+    // Standing: Hips are roughly halfway between shoulders and knees (Ratio ~ 0.5)
+    // Squatting: Hips drop down to knee level (Ratio approaches 1.0)
     final verticalDepthRatio = (hip.y - shoulder.y) / (knee.y - shoulder.y == 0 ? 0.001 : knee.y - shoulder.y);
 
     if (kneeFlexionAngle < _lowestKneeAngle) _lowestKneeAngle = kneeFlexionAngle;
-    if (verticalDepthRatio < _lowestHipRatio) _lowestHipRatio = verticalDepthRatio;
-
-    if (!isDown && (isFrontFacing ? verticalDepthRatio > 0.8 : kneeFlexionAngle > 160.0)) {
-      _leftAnkleAnchor = Offset(leftAnkle.x, leftAnkle.y);
-      _rightAnkleAnchor = Offset(rightAnkle.x, rightAnkle.y);
-    }
-
-    // THE FIX: Occlusion Filtering & Relaxed Threshold
-    bool footholdBroken = false;
-    if (_leftAnkleAnchor != null && _rightAnkleAnchor != null) {
-      final leftShift = math.sqrt(math.pow(leftAnkle.x - _leftAnkleAnchor!.dx, 2) + math.pow(leftAnkle.y - _leftAnkleAnchor!.dy, 2));
-      final rightShift = math.sqrt(math.pow(rightAnkle.x - _rightAnkleAnchor!.dx, 2) + math.pow(rightAnkle.y - _rightAnkleAnchor!.dy, 2));
-      
-      if (isFrontFacing) {
-        // Front view: Monitor both, relaxed to 20%
-        if (leftShift > torsoLength * 0.20 || rightShift > torsoLength * 0.20) footholdBroken = true;
-      } else {
-        // Side view: Monitor ONLY the clearly visible ankle. Ignore the hidden one.
-        final visibleShift = isLeftVisible ? leftShift : rightShift;
-        if (visibleShift > torsoLength * 0.20) footholdBroken = true;
-      }
-    }
+    if (verticalDepthRatio > _highestHipRatio) _highestHipRatio = verticalDepthRatio;
 
     int rawFormState = 1; 
     String rawFormError = "";
     Set<PoseLandmarkType> rawFaultyJoints = {};
     List<String> ttsVariations = [];
-    bool triggerInstantKill = false;
 
-    // --- 3. UNIVERSAL HEURISTICS ---
-    if (footholdBroken) {
-      rawFormState = -1;
-      triggerInstantKill = true; 
-      // Only highlight the visible foot/feet
-      if (isFrontFacing) {
-        rawFaultyJoints.addAll([PoseLandmarkType.leftAnkle, PoseLandmarkType.rightAnkle]);
-      } else {
-        rawFaultyJoints.add(isLeftVisible ? PoseLandmarkType.leftAnkle : PoseLandmarkType.rightAnkle);
-      }
-      if (rawFormError.isEmpty) {
-        rawFormError = "Foot moved.";
-        ttsVariations = ["Keep your feet planted.", "Don't lift your heels or step.", "Feet flat on the floor."];
-      }
-    } 
-    // THE FIX: Only enforce neck strictness if facing sideways.
-    else if (!isFrontFacing && neckAngle < 150.0) {
-      rawFormState = -1;
-      rawFaultyJoints.addAll([PoseLandmarkType.nose, PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder]);
-      if (rawFormError.isEmpty) {
-        rawFormError = "Gaze dropping.";
-        ttsVariations = ["Keep your gaze forward.", "Don't tuck your chin.", "Look straight ahead."];
-      }
-    }
-
-    // --- 4. PERSPECTIVE-SPECIFIC HEURISTICS ---
+    // --- 3. PERSPECTIVE-SPECIFIC HEURISTICS ---
     if (isFrontFacing) {
-      // CORONAL ENGINE (Front)
+      // FRONT VIEW: Only care about knees caving in (Valgus)
       final stanceWidth = (leftAnkle.x - rightAnkle.x).abs();
       final kneeWidth = (leftKnee.x - rightKnee.x).abs();
-      final midHipX = (landmarks[PoseLandmarkType.leftHip]!.x + landmarks[PoseLandmarkType.rightHip]!.x) / 2;
-      final midAnkleX = (leftAnkle.x + rightAnkle.x) / 2;
-      final lateralShift = (midHipX - midAnkleX).abs();
 
-      if (kneeWidth < stanceWidth * 0.75) {
+      // If knee width drops below 70% of stance width, flag it
+      if (kneeWidth < stanceWidth * 0.70 && verticalDepthRatio > 0.6) {
         rawFormState = -1;
         rawFaultyJoints.addAll([PoseLandmarkType.leftKnee, PoseLandmarkType.rightKnee]);
         if (rawFormError.isEmpty) {
           rawFormError = "Knees caving in.";
-          ttsVariations = ["Push your knees out.", "Don't let your knees collapse inward."];
-        }
-      } else if (lateralShift > torsoLength * 0.15) {
-        rawFormState = -1;
-        rawFaultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.rightHip]);
-        if (rawFormError.isEmpty) {
-          rawFormError = "Body shifting.";
-          ttsVariations = ["Keep your weight centered.", "Don't shift to one side."];
+          ttsVariations = ["Push your knees out.", "Drive your knees outward."];
         }
       }
       
-      double rawFormScore = ((verticalDepthRatio - 0.5) / 0.5).clamp(0.0, 1.0);
+      double rawFormScore = ((verticalDepthRatio - 0.5) / 0.4).clamp(0.0, 1.0);
       smoothedFormScore = (smoothedFormScore * 0.8) + (rawFormScore * 0.2);
 
     } else {
-      // SAGITTAL ENGINE (Side)
-      final trunkAngle = math.atan2((shoulder.x - hip.x).abs(), (shoulder.y - hip.y).abs()) * 180 / math.pi;
-      final tibiaAngle = math.atan2((knee.x - ankle.x).abs(), (knee.y - ankle.y).abs()) * 180 / math.pi;
-      final torsoCollapseDifferential = trunkAngle - tibiaAngle;
-
-      if (torsoCollapseDifferential > 20.0) {
-        rawFormState = -1;
-        rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder, PoseLandmarkType.leftHip, PoseLandmarkType.rightHip]);
-        if (rawFormError.isEmpty) {
-          rawFormError = "Chest falling.";
-          ttsVariations = ["Chest up. Don't round your back.", "Keep your torso parallel to your shins."];
-        }
-      }
-      
+      // SIDE VIEW: Ignore minor torso lean. Just calculate depth.
       double depthScore = ((kneeFlexionAngle - 90.0) / 60.0).clamp(0.0, 1.0);
-      smoothedFormScore = (smoothedFormScore * 0.8) + (depthScore * 0.2);
+      // Invert score so 1.0 is standing, 0.0 is deep
+      double rawFormScore = 1.0 - depthScore; 
+      smoothedFormScore = (smoothedFormScore * 0.8) + (rawFormScore * 0.2);
     }
 
     processFormState(
@@ -172,24 +99,25 @@ class SquatEvaluator extends BaseEvaluator {
       rawFormError: rawFormError, 
       rawFaultyJoints: rawFaultyJoints, 
       ttsVariations: ttsVariations, 
-      amnesiaConditionMet: isFrontFacing ? verticalDepthRatio >= 0.8 : kneeFlexionAngle >= 160.0,
-      isInstantFault: triggerInstantKill
+      amnesiaConditionMet: isFrontFacing ? verticalDepthRatio <= 0.6 : kneeFlexionAngle >= 150.0,
+      isInstantFault: false
     );
 
     // --- START THE STOPWATCH ---
-    if ((isFrontFacing ? verticalDepthRatio < 0.75 : kneeFlexionAngle < 150.0) && repMovementStartTime == null) {
+    if ((isFrontFacing ? verticalDepthRatio > 0.65 : kneeFlexionAngle < 140.0) && repMovementStartTime == null) {
       repMovementStartTime = DateTime.now();
     }
 
-    // --- STRICT REP LOGIC ---
+    // --- 4. STRICT, CORRECTED REP LOGIC ---
     bool goodRep = false;
     bool badRep = false;
     String repFeedback = "";
 
-    bool isDeepEnough = isFrontFacing ? verticalDepthRatio <= 0.5 : kneeFlexionAngle <= 90.0;
-    bool isStanding = isFrontFacing ? verticalDepthRatio >= 0.8 : kneeFlexionAngle >= 160.0;
+    // The mathematically corrected thresholds
+    bool isDeepEnough = isFrontFacing ? verticalDepthRatio >= 0.85 : kneeFlexionAngle <= 100.0;
+    bool isStanding = isFrontFacing ? verticalDepthRatio <= 0.60 : kneeFlexionAngle >= 150.0;
 
-    if (isDown) {
+    if (isDown) { // Currently in the hole, waiting to stand UP
       repFeedback = "Stand up!";
       if (isStanding) { 
         isDown = false; 
@@ -197,42 +125,47 @@ class SquatEvaluator extends BaseEvaluator {
         bool isRushed = false;
         if (repMovementStartTime != null) {
           final durationMs = DateTime.now().difference(repMovementStartTime!).inMilliseconds;
-          if (durationMs < 2000) isRushed = true; 
+          if (durationMs < 1500) isRushed = true; 
         }
         repMovementStartTime = null; 
         
         if (isRushed) {
           badRep = true;
           repFeedback = "Too fast! Control the rep.";
-          AudioService.instance.speakCorrection(["Slow down the descent.", "Don't rush. Time under tension."]);
+          AudioService.instance.speakCorrection(["Slow down the descent."]);
         } else if (hasFormBrokenThisRep) {
           badRep = true;
           repFeedback = "Rep invalid. Watch form!";
         } else {
           goodRep = true;
-          repFeedback = "Great depth!";
+          repFeedback = "Great squat!";
         }
         _lowestKneeAngle = 180.0; 
-        _lowestHipRatio = 1.0;
+        _highestHipRatio = 0.0;
       }
-    } else {
+    } else { // Currently standing, waiting to go DOWN
       if (isDeepEnough) { 
         isDown = true; 
         repFeedback = "Depth reached. Stand!";
       } else {
         repFeedback = "Drop lower...";
         
-        if (isStanding && (isFrontFacing ? _lowestHipRatio > 0.6 : _lowestKneeAngle > 110.0)) {
-          // THE FIX: Ensure form hasn't completely collapsed before yelling about half reps
-          if (publishedFormState != -1) {
-            AudioService.instance.speakCorrection([
-              "Partial rep. Break parallel.",
-              "Go deeper.",
-              "Drop your hips lower."
-            ]);
+        // Half-Rep Detection: Returned to standing but never hit depth
+        if (isStanding) {
+          bool attemptedSquat = isFrontFacing ? _highestHipRatio > 0.70 : _lowestKneeAngle < 130.0;
+          bool missedDepth = isFrontFacing ? _highestHipRatio < 0.85 : _lowestKneeAngle > 100.0;
+
+          if (attemptedSquat && missedDepth) {
+            if (publishedFormState != -1) {
+              AudioService.instance.speakCorrection([
+                "Partial rep. Break parallel.",
+                "Go deeper.",
+                "Drop your hips lower."
+              ]);
+            }
+            _lowestKneeAngle = 180.0; 
+            _highestHipRatio = 0.0;
           }
-          _lowestKneeAngle = 180.0; 
-          _lowestHipRatio = 1.0;
         }
       }
     }
@@ -241,6 +174,15 @@ class SquatEvaluator extends BaseEvaluator {
       'goodRepTriggered': goodRep, 'badRepTriggered': badRep,
       'formState': publishedFormState, 'feedback': publishedFormState == -1 ? publishedFormError : repFeedback,
       'activeJoints': activeJoints, 'faultyJoints': publishedFaultyJoints, 'formScore': smoothedFormScore,
+    };
+  }
+
+  Map<String, dynamic> _bailOut({Set<PoseLandmarkType>? activeJoints}) {
+    return {
+      'goodRepTriggered': false, 'badRepTriggered': false, 
+      'formState': 0, 'feedback': "Align body to camera.", 
+      'activeJoints': activeJoints ?? <PoseLandmarkType>{}, 
+      'faultyJoints': <PoseLandmarkType>{}, 'formScore': 0.0
     };
   }
 }
