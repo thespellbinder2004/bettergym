@@ -1,37 +1,60 @@
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart'; // Required for Haptics
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AudioService {
-  // Singleton pattern to prevent multiple audio engines from spawning
+  // Singleton pattern
   static final AudioService instance = AudioService._internal();
   AudioService._internal();
 
+  // --- Core Engines ---
   final FlutterTts _tts = FlutterTts();
-  
-  // State tracking
-  bool _voiceEnabled = true;
+  final Random _random = Random();
+
+  // Persistent Audio Channels (Prevents memory leaks from spawning new players)
+  final AudioPlayer _chimePlayer = AudioPlayer();
+  final AudioPlayer _tickPlayer = AudioPlayer();
+  final AudioPlayer _beepPlayer = AudioPlayer();
+  final AudioPlayer _uiPlayer = AudioPlayer();
+
+  // --- State Tracking ---
+  bool _masterSoundEnabled = true;
   double _feedbackVolume = 1.0;
   double _beepsVolume = 1.0;
+  
+  // Anti-Spam Tracking
   bool _isSpeaking = false;
+  DateTime _lastSpokenTime = DateTime.fromMillisecondsSinceEpoch(0);
+  static const int _cooldownSeconds = 4;
+  String _lastSpokenPhrase = "";
 
-  /// Pulls the split volumes from SharedPreferences
+  /// Initializes volumes and lifecycle hooks
   Future<void> loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    _voiceEnabled = prefs.getBool('voice_enabled') ?? true;
+    _masterSoundEnabled = prefs.getBool('master_sound') ?? true;
     _feedbackVolume = prefs.getDouble('feedback_volume') ?? 1.0;
     _beepsVolume = prefs.getDouble('beeps_volume') ?? 1.0;
 
-    // Configure the TTS Engine
-    await _tts.setSpeechRate(0.5); // Adjust for a natural, coaching pace
-    await _tts.setPitch(1.0);
-    await _tts.setVolume(_feedbackVolume);
+    // Apply SFX Volumes
+    await _chimePlayer.setVolume(_beepsVolume);
+    await _tickPlayer.setVolume(_beepsVolume);
+    await _beepPlayer.setVolume(_beepsVolume);
+    await _uiPlayer.setVolume(_beepsVolume);
 
-    // Lifecycle hooks to power the Anti-Spam lock
+    // Apply TTS Volumes & Configuration
+    await _tts.setVolume(_feedbackVolume);
+    await _tts.setSpeechRate(0.5); // Natural coaching pace
+    await _tts.setPitch(1.0);
+
+    // TTS Lifecycle Hooks for precise state tracking
     _tts.setStartHandler(() => _isSpeaking = true);
-    _tts.setCompletionHandler(() => _isSpeaking = false);
+    _tts.setCompletionHandler(() {
+      _isSpeaking = false;
+      _lastSpokenTime = DateTime.now(); // Clock starts when silence begins
+    });
     _tts.setErrorHandler((msg) => _isSpeaking = false);
     _tts.setCancelHandler(() => _isSpeaking = false);
   }
@@ -40,82 +63,78 @@ class AudioService {
   // CHANNEL 1: TEXT-TO-SPEECH (FEEDBACK)
   // ==========================================
 
-  /// Priority messages (Prep phases, Rest phases) will STOP any currently playing 
-  /// audio and force themselves to the front of the queue.
+  /// Priority messages (Setup, Rest) stop current audio and bypass the cooldown.
   Future<void> speakPriority(List<String> variations) async {
-    if (!_voiceEnabled || _feedbackVolume <= 0.0) return;
+    if (!_masterSoundEnabled || _feedbackVolume <= 0.0) return;
     
-    await _tts.stop(); // Nuke whatever is currently playing
-    await _tts.setVolume(_feedbackVolume); // Re-apply volume in case it changed
-
-    final text = variations[Random().nextInt(variations.length)];
-    await _tts.speak(text);
-  }
-
-  /// Correction messages (Form breaks) are subject to the Anti-Spam lock.
-  /// If the AI is already speaking, the correction is ignored.
-  Future<void> speakCorrection(List<String> variations) async {
-    if (!_voiceEnabled || _feedbackVolume <= 0.0 || _isSpeaking) return;
-
+    await _tts.stop(); 
     await _tts.setVolume(_feedbackVolume);
-    final text = variations[Random().nextInt(variations.length)];
-    await _tts.speak(text);
+
+    final phrase = _getUniquePhrase(variations);
+    await _tts.speak(phrase);
+    
+    // We don't update _lastSpokenTime here because the completion handler does it.
   }
 
+  /// Correction messages (Form breaks) strictly obey the 4-second cooldown AND haptics.
+  Future<void> speakCorrection(List<String> variations) async {
+    if (!_masterSoundEnabled || _feedbackVolume <= 0.0 || _isSpeaking) return;
+
+    final now = DateTime.now();
+    if (now.difference(_lastSpokenTime).inSeconds >= _cooldownSeconds) {
+      
+      final phrase = _getUniquePhrase(variations);
+      
+      // Physical interrupt for users with music playing
+      HapticFeedback.heavyImpact(); 
+      
+      await _tts.setVolume(_feedbackVolume);
+      await _tts.speak(phrase);
+    }
+  }
+
+  /// Ensures we don't repeat the exact same nagging phrase twice in a row.
+  String _getUniquePhrase(List<String> variations) {
+    if (variations.isEmpty) return "";
+    if (variations.length == 1) return variations.first;
+
+    String phrase;
+    do {
+      phrase = variations[_random.nextInt(variations.length)];
+    } while (phrase == _lastSpokenPhrase);
+    
+    _lastSpokenPhrase = phrase;
+    return phrase;
+  }
 
   // ==========================================
   // CHANNEL 2: SOUND EFFECTS (BEEPS)
   // ==========================================
 
-  /// Fire-and-forget audio player. Spawns a lightweight instance to prevent 
-  /// overlapping sounds (like fast reps) from cutting each other off.
-  Future<void> _playSound(String assetPath) async {
-    if (_beepsVolume <= 0.0) return;
+  /// Reuses existing memory channels instead of creating new instances.
+  Future<void> _playOnChannel(AudioPlayer channel, String assetPath) async {
+    if (!_masterSoundEnabled || _beepsVolume <= 0.0) return; 
+    
+    if (channel.state == PlayerState.playing) {
+      await channel.stop(); // Cut off the old sound if it's still trailing
+    }
+    
     try {
-      final player = AudioPlayer();
-      await player.setVolume(_beepsVolume);
-      
-      // Play the sound, then immediately dispose of the player from memory when done
-      player.onPlayerComplete.listen((_) => player.dispose());
-      await player.play(AssetSource(assetPath));
+      await channel.play(AssetSource(assetPath));
     } catch (e) {
       debugPrint("AudioSFX Error: Could not play $assetPath - $e");
     }
   }
 
   // --- STANDARD WORKOUT SFX ---
-  
-  void playTick() {
-    _playSound('sounds/tick.mp3'); // For plank countdowns
-  }
-
-  void playChime() {
-    _playSound('sounds/chime.mp3'); // For a successful rep
-  }
-
-  void playLeadInBeep() {
-    _playSound('sounds/beep_low.mp3'); // The "3... 2... 1..." prep sounds
-  }
-
-  void playGoBeep() {
-    _playSound('sounds/beep_high.mp3'); // The "GO!" prep sound
-  }
+  void playTick() => _playOnChannel(_tickPlayer, 'sounds/tick.mp3');
+  void playChime() => _playOnChannel(_chimePlayer, 'sounds/chime.mp3');
+  void playLeadInBeep() => _playOnChannel(_beepPlayer, 'sounds/beep_low.mp3');
+  void playGoBeep() => _playOnChannel(_beepPlayer, 'sounds/beep_high.mp3');
 
   // --- SYSTEM SFX ---
-
-  void playPauseSound() {
-    _playSound('sounds/pause.mp3'); 
-  }
-
-  void playResumeSound() {
-    _playSound('sounds/resume.mp3'); 
-  }
-
-  void playAbortSound() {
-    _playSound('sounds/abort.mp3'); // Error or session cancelled early
-  }
-
-  void playFinishSound() {
-    _playSound('sounds/finish.mp3'); // Session fully completed
-  }
+  void playPauseSound() => _playOnChannel(_uiPlayer, 'sounds/pause.mp3');
+  void playResumeSound() => _playOnChannel(_uiPlayer, 'sounds/resume.mp3');
+  void playAbortSound() => _playOnChannel(_uiPlayer, 'sounds/abort.mp3');
+  void playFinishSound() => _playOnChannel(_uiPlayer, 'sounds/finish.mp3');
 }
