@@ -5,7 +5,6 @@ import '../services/api_services.dart';
 import 'main_layout.dart';
 import 'register_page.dart';
 import 'dart:async';
-import '../services/sync_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -22,12 +21,10 @@ class _LoginPageState extends State<LoginPage> {
   String _message = '';
   bool _isPasswordVisible = false;
 
-  Future<void> _saveLogin(Map<String, dynamic> userData) async {
+  Future<void> _saveLogin({required String username}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('logged_in', true);
-    await prefs.setString('username', userData['username']);
-    await prefs.setInt('user_id', userData['id']);
-    await prefs.setString('auth_token', userData['auth_token']);
+    await prefs.setString('username', username);
   }
 
   Future<void> _login() async {
@@ -55,20 +52,17 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
 
       if (response['status'] == 'success') {
-        // 1. Save all credentials to the phone
-        await _saveLogin(response['user']);
+        final savedUsername = response['user']['username'] ?? username;
 
-        // 2. Trigger the Amnesia Pipeline (Download History)
-        int userId = response['user']['id'];
-        String token = response['user']['auth_token'];
-        await SyncService.pullHistoricalData(userId, token);
+        await _saveLogin(username: savedUsername);
 
         if (!mounted) return;
 
-        // 3. Route to Dashboard (which will now instantly show their historical data)
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (_) => const MainLayout()),
+          MaterialPageRoute(
+            builder: (_) => const MainLayout(),
+          ),
         );
       } else {
         setState(() {
