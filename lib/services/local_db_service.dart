@@ -91,4 +91,15 @@ class LocalDBService {
     final db = await database;
     await db.update('workout_sessions', {'sync_status': 1}, where: 'id = ?', whereArgs: [sessionId]);
   }
+  // --- FETCH DASHBOARD DATA ---
+  Future<List<Map<String, dynamic>>> getCompletedSessions() async {
+    final db = await database;
+    // We order by 'created_at ASC' so the oldest workout is on the left of the chart, newest on the right
+    return await db.query(
+      'workout_sessions',
+      where: 'status = ?',
+      whereArgs: ['COMPLETED'],
+      orderBy: 'created_at ASC', 
+    );
+  }
 }
