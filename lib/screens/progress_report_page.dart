@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../main.dart';
 import 'main_layout.dart';
-import 'session_summary_page.dart'; // To access ExerciseTelemetry
+import 'session_summary_page.dart';
 
 class ProgressReportPage extends StatelessWidget {
   final List<ExerciseTelemetry> telemetryData;
@@ -24,6 +24,16 @@ class ProgressReportPage extends StatelessWidget {
   String _formatDuration(Duration d) {
     String twoDigits(int n) => n.toString().padLeft(2, "0");
     return "${twoDigits(d.inMinutes.remainder(60))}:${twoDigits(d.inSeconds.remainder(60))}";
+  }
+
+  // --- THE MISSING TIME FORMATTER ---
+  String _formatTimeString(int totalSeconds) {
+    if (totalSeconds == 0) return "0s";
+    int m = totalSeconds ~/ 60;
+    int s = totalSeconds % 60;
+    if (m > 0 && s > 0) return "${m}m ${s}s";
+    if (m > 0) return "${m}m";
+    return "${s}s";
   }
 
   @override
@@ -49,7 +59,7 @@ class ProgressReportPage extends StatelessWidget {
               children: [
                 _buildMacroStat("SCORE", globalScore.toString(), globalScore > 75 ? mintGreen : Colors.orange),
                 _buildMacroStat("TIME", _formatDuration(totalDuration), Colors.white),
-                _buildMacroStat("SLOP", _calculateTotalBadReps().toString(), neonRed),
+                _buildMacroStat("BAD REPS", _calculateTotalBadReps().toString(), neonRed),
               ],
             ),
           ),
@@ -98,17 +108,26 @@ class ProgressReportPage extends StatelessWidget {
     );
   }
 
+  // Moved to Class Level so it compiles cleanly
+  Widget _buildMicroStat(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(value, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 2),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
   Widget _buildExerciseCard(ExerciseTelemetry ex) {
-    final int totalReps = ex.goodReps + ex.badReps;
+    final int totalVolume = ex.goodReps + ex.badReps;
     
     // Find the exact point of failure (score drops below 0.6)
     int? failurePoint;
-    if (!ex.isDuration) {
-      for (int i = 0; i < ex.repScores.length; i++) {
-        if (ex.repScores[i] < 0.6) {
-          failurePoint = i + 1; // 1-indexed for the user
-          break;
-        }
+    for (int i = 0; i < ex.repScores.length; i++) {
+      if (ex.repScores[i] < 0.6) {
+        failurePoint = i + 1; // 1-indexed for the user
+        break;
       }
     }
 
@@ -120,7 +139,6 @@ class ProgressReportPage extends StatelessWidget {
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Theme(
-        // Hides the ugly default dividers of ExpansionTile
         data: ThemeData().copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           iconColor: mintGreen,
@@ -133,29 +151,48 @@ class ProgressReportPage extends StatelessWidget {
           trailing: SizedBox(
             width: 60,
             height: 60,
-            child: ex.isDuration 
-                ? _buildDurationRing(ex) 
-                : CustomPaint(
-                    painter: RatioRingPainter(good: ex.goodReps, bad: ex.badReps),
-                    child: Center(
-                      child: Text(
-                        "${ex.goodReps}/$totalReps",
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                      ),
-                    ),
-                  ),
+            // Uses RatioRingPainter for BOTH reps and duration so the text is correct
+            child: CustomPaint(
+              painter: RatioRingPainter(good: ex.goodReps, bad: ex.badReps),
+              child: Center(
+                child: Text(
+                  ex.isDuration ? _formatTimeString(totalVolume) : "${ex.goodReps}/$totalVolume",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+              ),
+            ),
           ),
           
-          // --- EXPANDED VIEW (Graph & Failure Point) ---
+          // --- EXPANDED VIEW (Stats, Graph & Failure Point) ---
           children: [
-            if (ex.isDuration)
-              const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text("Fatigue tracking is not applied to static holds.", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
-              )
-            else if (ex.repScores.length > 1) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0, bottom: 16.0, left: 16.0, right: 16.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildMicroStat(
+                    ex.isDuration ? "TOTAL TIME" : "TOTAL REPS", 
+                    ex.isDuration ? _formatTimeString(totalVolume) : totalVolume.toString(), 
+                    Colors.white
+                  ),
+                  _buildMicroStat(
+                    ex.isDuration ? "GOOD FORM" : "CLEAN REPS", 
+                    ex.isDuration ? _formatTimeString(ex.goodReps) : ex.goodReps.toString(), 
+                    mintGreen
+                  ),
+                  _buildMicroStat(
+                    ex.isDuration ? "BAD FORM" : "BAD REPS", 
+                    ex.isDuration ? _formatTimeString(ex.badReps) : ex.badReps.toString(), 
+                    neonRed
+                  ),
+                ],
+              ),
+            ),
+
+            if (ex.repScores.length > 1) ...[
               Padding(
-                padding: const EdgeInsets.only(top: 16.0, bottom: 8.0, left: 16.0, right: 32.0),
+                padding: const EdgeInsets.only(bottom: 8.0, left: 16.0, right: 32.0),
                 child: SizedBox(
                   height: 120,
                   child: LineChart(
@@ -165,7 +202,7 @@ class ProgressReportPage extends StatelessWidget {
                         rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                         topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                         bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 22, getTitlesWidget: (value, meta) => Text(value.toInt().toString(), style: const TextStyle(color: Colors.grey, fontSize: 10)))),
-                        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), // Hide Y axis numbers to stay clean
+                        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                       ),
                       borderData: FlBorderData(show: false),
                       minX: 1, maxX: ex.repScores.length.toDouble(),
@@ -173,10 +210,7 @@ class ProgressReportPage extends StatelessWidget {
                       lineBarsData: [
                         LineChartBarData(
                           spots: ex.repScores.asMap().entries.map((e) => FlSpot((e.key + 1).toDouble(), e.value)).toList(),
-                          isCurved: true,
-                          color: mintGreen,
-                          barWidth: 3,
-                          isStrokeCapRound: true,
+                          isCurved: true, color: mintGreen, barWidth: 3, isStrokeCapRound: true,
                           dotData: const FlDotData(show: true),
                           belowBarData: BarAreaData(show: true, color: mintGreen.withOpacity(0.1)),
                         ),
@@ -185,6 +219,7 @@ class ProgressReportPage extends StatelessWidget {
                   ),
                 ),
               ),
+              
               if (failurePoint != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16.0),
@@ -193,33 +228,25 @@ class ProgressReportPage extends StatelessWidget {
                     children: [
                       const Icon(Icons.warning_amber_rounded, color: neonRed, size: 16),
                       const SizedBox(width: 8),
-                      Text("Form breakdown detected at Rep $failurePoint", style: const TextStyle(color: neonRed, fontSize: 12, fontWeight: FontWeight.bold)),
+                      // Dynamic text for Rep vs Second
+                      Text("Form breakdown detected at ${ex.isDuration ? 'Second' : 'Rep'} $failurePoint", style: const TextStyle(color: neonRed, fontSize: 12, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 )
               else 
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 16.0),
-                  child: Text("Form maintained throughout set.", style: TextStyle(color: mintGreen, fontSize: 12, fontWeight: FontWeight.bold)),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  // Dynamic text for Set vs Duration
+                  child: Text("Form maintained throughout ${ex.isDuration ? 'duration' : 'set'}.", style: const TextStyle(color: mintGreen, fontSize: 12, fontWeight: FontWeight.bold)),
                 ),
             ] else ...[
                const Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text("Not enough reps to generate fatigue curve.", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
+                padding: EdgeInsets.only(bottom: 16.0),
+                child: Text("Not enough data to generate fatigue curve.", style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
               )
             ],
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildDurationRing(ExerciseTelemetry ex) {
-    // For planks, we just show a solid green ring if they completed it
-    return CustomPaint(
-      painter: RatioRingPainter(good: 1, bad: 0), // Full green
-      child: const Center(
-        child: Icon(Icons.timer, color: Colors.white, size: 20),
       ),
     );
   }
@@ -238,12 +265,11 @@ class RatioRingPainter extends CustomPainter {
     if (total == 0) return;
 
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = min(size.width / 2, size.height / 2) - 4; // 4px padding
+    final radius = min(size.width / 2, size.height / 2) - 4; 
     final strokeWidth = 6.0;
 
     final rect = Rect.fromCircle(center: center, radius: radius);
     
-    // Start drawing from the top (-pi / 2)
     const startAngle = -pi / 2;
     final greenSweep = (good / total) * 2 * pi;
     final redSweep = (bad / total) * 2 * pi;
@@ -253,13 +279,11 @@ class RatioRingPainter extends CustomPainter {
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round;
 
-    // Draw Red Arc First (Underneath/Background)
     if (bad > 0) {
       paint.color = neonRed;
       canvas.drawArc(rect, startAngle + greenSweep, redSweep, false, paint);
     }
 
-    // Draw Green Arc Second
     if (good > 0) {
       paint.color = mintGreen;
       canvas.drawArc(rect, startAngle, greenSweep, false, paint);
