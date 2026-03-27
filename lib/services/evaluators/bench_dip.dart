@@ -69,8 +69,8 @@ class BenchDipEvaluator extends BaseEvaluator {
         ttsVariations = ["Strict side profile required.", "Please face the side completely."];
       }
     } 
-    // B. Hip Drift (The Shoulder Killer) - Tightened to 40%
-    else if (horizontalDrift > torsoLength * 0.40) { 
+    // B. Hip Drift (The Shoulder Killer)
+    else if (horizontalDrift > torsoLength * 0.50) { 
       rawFormState = -1;
       rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip, PoseLandmarkType.leftWrist, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip, PoseLandmarkType.rightWrist]);
       if (rawFormError.isEmpty) {
