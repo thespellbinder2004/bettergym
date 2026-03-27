@@ -300,3 +300,4 @@ class _SessionSummaryPageState extends State<SessionSummaryPage> {
       ),
     );
   }
+}
