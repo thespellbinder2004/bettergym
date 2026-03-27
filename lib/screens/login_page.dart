@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-import '../main.dart'; // Imports your global colors
+import '../main.dart'; 
 import '../services/api_services.dart';
 import 'main_layout.dart';
 import 'register_page.dart';
+import 'dart:async';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -47,7 +47,7 @@ class _LoginPageState extends State<LoginPage> {
       final response = await ApiService.login(
         username: username,
         password: password,
-      );
+      ).timeout(const Duration(seconds: 10));
 
       if (!mounted) return;
 
@@ -66,14 +66,19 @@ class _LoginPageState extends State<LoginPage> {
         );
       } else {
         setState(() {
-          _message = response['message'] ?? 'Login failed.';
+          _message = response['message'] ?? 'Login failed. Check credentials.';
         });
       }
+    } on TimeoutException {
+      setState(() {
+        _message = 'Connection timed out. Server is unreachable.';
+      });
+      debugPrint('CRITICAL LOGIN ERROR: Timeout (Server Offline/Wrong IP)');
     } catch (e) {
       setState(() {
-        _message = 'Error communicating with server. Check your connection.';
-        debugPrint('Login Error: $e');
+        _message = 'Server returned invalid data. Check console.';
       });
+      debugPrint('CRITICAL LOGIN ERROR: $e');
     } finally {
       if (mounted) {
         setState(() {
