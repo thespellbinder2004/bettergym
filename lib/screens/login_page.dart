@@ -66,6 +66,22 @@ class _LoginPageState extends State<LoginPage> {
       if (response['status'] == 'success') {
         await _saveLogin(response['user']);
 
+        // --- NEW: PULL CLOUD SETTINGS ON LOGIN ---
+        setState(() => _loadingText = 'Loading preferences...');
+        final cloudSettings = await ApiService.pullSettings();
+        
+        if (cloudSettings != null && cloudSettings['status'] == 'success') {
+          final prefs = await SharedPreferences.getInstance();
+          final data = cloudSettings['data'];
+          
+          await prefs.setInt('prep_time', int.tryParse(data['prep_time'].toString()) ?? 30);
+          await prefs.setInt('rest_time', int.tryParse(data['rest_time'].toString()) ?? 30);
+          await prefs.setBool('voice_enabled', data['voice_enabled'].toString() == '1');
+          await prefs.setDouble('feedback_volume', double.tryParse(data['feedback_volume'].toString()) ?? 1.0);
+          await prefs.setDouble('beeps_volume', double.tryParse(data['beeps_volume'].toString()) ?? 1.0);
+          debugPrint("CLOUD SETTINGS: Successfully applied to local device.");
+        }
+
         if (!mounted) return;
 
         Navigator.pushReplacement(

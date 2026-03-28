@@ -106,4 +106,58 @@ class ApiService {
       debugPrint("SYNC NETWORK ERROR: $e");
     }
   }
+  // --- SETTINGS SYNC ENGINE ---
+  static Future<void> pushSettings({
+    required int prepTime, required int restTime, required bool voiceEnabled,
+    required double feedbackVolume, required double beepsVolume,
+  }) async {
+    try {
+      final baseUrl = await getBaseUrl();
+      final prefs = await SharedPreferences.getInstance();
+      
+      String? userId = prefs.getInt('user_id')?.toString();
+      String? token = prefs.getString('auth_token');
+
+      if (userId == null || token == null) return;
+
+      await http.post(
+        Uri.parse('$baseUrl/sync_settings.php'), // You will need to create this PHP script
+        body: {
+          'user_id': userId,
+          'auth_token': token,
+          'prep_time': prepTime.toString(),
+          'rest_time': restTime.toString(),
+          'voice_enabled': voiceEnabled ? '1' : '0',
+          'feedback_volume': feedbackVolume.toString(),
+          'beeps_volume': beepsVolume.toString(),
+        },
+      ).timeout(const Duration(seconds: 5));
+    } catch (e) {
+      debugPrint("SETTINGS PUSH ERROR: $e");
+    }
+  }
+
+  static Future<Map<String, dynamic>?> pullSettings() async {
+    try {
+      final baseUrl = await getBaseUrl();
+      final prefs = await SharedPreferences.getInstance();
+      
+      String? userId = prefs.getInt('user_id')?.toString();
+      String? token = prefs.getString('auth_token');
+
+      if (userId == null || token == null) return null;
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/get_settings.php'), // You will need to create this PHP script
+        body: {'user_id': userId, 'auth_token': token},
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+    } catch (e) {
+      debugPrint("SETTINGS PULL ERROR: $e");
+    }
+    return null;
+  }
 }

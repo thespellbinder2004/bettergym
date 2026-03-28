@@ -2,6 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart';
+import '../services/api_services.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -38,17 +39,20 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _saveIntSetting(String key, int value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(key, value);
+    await prefs.setInt(key, value);   // 1. Saves to the phone
+    _syncSettingsToCloud();           // 2. Trips the wire to tell XAMPP
   }
 
   Future<void> _saveBoolSetting(String key, bool value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(key, value);
+    await prefs.setBool(key, value);  // 1. Saves to the phone
+    _syncSettingsToCloud();           // 2. Trips the wire to tell XAMPP
   }
 
   Future<void> _saveDoubleSetting(String key, double value) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(key, value);
+    await prefs.setDouble(key, value); // 1. Saves to the phone
+    _syncSettingsToCloud();            // 2. Trips the wire to tell XAMPP
   }
 
   String _formatTime(int totalSeconds) {
@@ -266,4 +270,16 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     );
   }
+
+  // --- CLOUD SYNC TRIGGER ---
+  void _syncSettingsToCloud() {
+    ApiService.pushSettings(
+      prepTime: _prepTime,
+      restTime: _restTime,
+      voiceEnabled: _voiceEnabled,
+      feedbackVolume: _feedbackVolume,
+      beepsVolume: _beepsVolume,
+    );
+  }
+  
 }
