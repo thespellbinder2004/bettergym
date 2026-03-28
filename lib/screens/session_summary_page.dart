@@ -26,14 +26,15 @@ class ExerciseTelemetry {
 }
 
 class SessionSummaryPage extends StatefulWidget {
+  final String sessionId;
   final bool isCompleted;
   final List<ExerciseTelemetry> telemetryData;
   final Duration totalDuration;
-  // If they used a saved routine, pass its ID here. Otherwise, leave null.
-  final String? routineId; 
+  final String? routineId;
 
   const SessionSummaryPage({
     super.key, 
+    required this.sessionId,
     required this.isCompleted,
     required this.telemetryData,
     required this.totalDuration,
@@ -74,56 +75,26 @@ class _SessionSummaryPageState extends State<SessionSummaryPage> {
     return neonRed;
   }
 
-  // --- THE DATA PIPELINE ---
   Future<void> _processAndSaveData(VoidCallback navigateAction) async {
     setState(() => _isSaving = true);
 
     try {
-      final String sessionId = const Uuid().v4();
-      
-      // TODO: Replace '1' with your actual logged-in user's ID
-      final int currentUserId = 1; 
+      // 1. We just update the parent record we created in PoseCameraPage
+      await LocalDBService.instance.updateSessionCompletion(
+        widget.sessionId,
+        widget.isCompleted ? 'COMPLETED' : 'ABORTED',
+        _calculateGlobalScore(),
+        widget.totalDuration.inSeconds,
+      );
 
-      // 1. Package the Master Session
-      final Map<String, dynamic> sessionData = {
-        'id': sessionId,
-        'user_id': currentUserId, 
-        'routine_id': widget.routineId,
-        'status': widget.isCompleted ? 'COMPLETED' : 'ABORTED',
-        'global_score': _calculateGlobalScore(),
-        'duration_seconds': widget.totalDuration.inSeconds,
-        'sync_status': 0, // Starts as unsynced
-      };
-
-      // 2. Package the Child Telemetry
-      List<Map<String, dynamic>> exercisesData = [];
-      for (var ex in widget.telemetryData) {
-        // Only save exercises they actually attempted
-        if (ex.repScores.isNotEmpty) {
-          exercisesData.add({
-            'id': const Uuid().v4(),
-            'session_id': sessionId,
-            'exercise_name': ex.name,
-            'good_reps': ex.goodReps,
-            'bad_reps': ex.badReps,
-            'exercise_score': ex.finalScore,
-            'rep_scores_array': ex.repScores, // The service will jsonEncode this
-          });
-        }
-      }
-
-      // 3. Lock it in the SQLite Bunker
-      await LocalDBService.instance.saveWorkoutOffline(sessionData, exercisesData);
-
-      // 4. Fire the Cloud Cannon (Does not await, runs in background)
+      // 2. Fire the Cloud Cannon (Does not await, runs in background)
       SyncService.pushUnsyncedData();
 
-      // 5. Navigate away
+      // 3. Navigate away
       navigateAction();
 
     } catch (e) {
       debugPrint("Critical Save Error: $e");
-      // Even if it fails, let them leave the screen so they aren't trapped
       navigateAction(); 
     }
   }

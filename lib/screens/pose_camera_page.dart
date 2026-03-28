@@ -9,11 +9,14 @@ import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:permission_handler/permission_handler.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:uuid/uuid.dart'; // THE FIX: Missing UUID import
 
 import '../main.dart';
 import '../services/audio_service.dart'; 
 import '../services/hardware_service.dart'; 
 import '../services/biomechanics_engine.dart';
+import '../services/local_db_service.dart'; // Ensure DB service is accessible
+import '../services/sync_service.dart';     // Ensure Sync service is accessible
 import 'session_setup_page.dart';
 import 'session_summary_page.dart';
 
@@ -31,7 +34,7 @@ class PoseCameraPage extends StatefulWidget {
 class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObserver {
   CameraController? _cameraController;
   late final PoseDetector _poseDetector;
-
+  
   bool _isCheckingPermission = true;
   bool _hasCameraPermission = false;
 
@@ -70,9 +73,12 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
   int _previousFormState = 1; 
   List<int> _formBreakSeconds = []; 
 
-  // --- NEW: TELEMETRY TRACKERS ---
+  // --- TELEMETRY TRACKERS (Cleaned up duplicates) ---
   late List<ExerciseTelemetry> _sessionTelemetry;
   DateTime? _sessionStartTime;
+  
+  // The Master ID for this specific workout
+  late final String _currentSessionId;
   
   // To average the form score across a single rep
   double _currentRepScoreAccumulator = 0.0;
@@ -81,6 +87,7 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
   @override
   void initState() {
     super.initState();
+    _currentSessionId = const Uuid().v4();
     WidgetsBinding.instance.addObserver(this);
     _poseDetector = PoseDetector(
       options: PoseDetectorOptions(mode: PoseDetectionMode.stream, model: PoseDetectionModel.accurate),
@@ -138,14 +145,25 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
       _prepTimeSetting = prefs.getInt('prep_time') ?? 10;
       _restTimeSetting = prefs.getInt('rest_time') ?? 30;
       
-      // Initialize the telemetry array based on the routine
       _sessionTelemetry = widget.routine.map((ex) => 
         ExerciseTelemetry(name: ex.name, isDuration: ex.isDuration, target: ex.target)
       ).toList();
     });
 
     if (widget.routine.isNotEmpty) {
-      _sessionStartTime = DateTime.now(); // Start the master clock
+      _sessionStartTime = DateTime.now(); 
+      
+      // Create the parent session in the database immediately
+      await LocalDBService.instance.createSessionRecord({
+        'id': _currentSessionId,
+        'user_id': prefs.getInt('user_id') ?? 1, 
+        'routine_id': null, 
+        'status': 'IN_PROGRESS',
+        'global_score': 0,
+        'duration_seconds': 0,
+        'sync_status': 0, 
+      });
+
       _startAcquisitionPhase();
     } else {
       _exitSession();
@@ -312,7 +330,24 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
     } 
   }
 
-  void _completeExercise() {
+  void _completeExercise() async {
+    // --- THE CHECKPOINT SAVE ---
+    final currentExTelemetry = _sessionTelemetry[_currentExerciseIndex];
+    if (currentExTelemetry.repScores.isNotEmpty) {
+      await LocalDBService.instance.appendExerciseTelemetry({
+        'id': const Uuid().v4(),
+        'session_id': _currentSessionId,
+        'exercise_name': currentExTelemetry.name,
+        'good_reps': currentExTelemetry.goodReps,
+        'bad_reps': currentExTelemetry.badReps,
+        'exercise_score': currentExTelemetry.finalScore,
+        'rep_scores_array': currentExTelemetry.repScores,
+      });
+      // Fire the sync cannon in the background while they rest
+      SyncService.pushUnsyncedData();
+    }
+    // --------------------------------
+
     if (_currentExerciseIndex < widget.routine.length - 1) {
       setState(() => _currentExerciseIndex++); 
       _startRestPhase();
@@ -343,7 +378,6 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
         }
 
         if (_currentPhase == SessionPhase.active && widget.routine[_currentExerciseIndex].isDuration) {
-          // --- THE FIX: ADDED PLANK TELEMETRY LOGGING ---
           if (_formState != -1) { 
             _repsOrSecondsRemaining--;
             
@@ -499,7 +533,7 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
         setState(() {
           _formState = analysis['formState'];
           _feedbackMessage = analysis['feedback'];
-          _formScore = analysis['formScore'] ?? 1.0;     
+          _formScore = analysis['formScore'] ?? 1.0;    
           _faultyJoints = analysis['faultyJoints'] ?? {}; 
 
           if (_previousFormState == 1 && _formState == -1) {
@@ -510,7 +544,6 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
           }
           _previousFormState = _formState;
 
-          // --- THE FIX: Cleaned up the nested logic and brackets ---
           if (!currentExercise.isDuration) {
             // Accumulate the form score while the rep is active
             _currentRepScoreAccumulator += _formScore;
@@ -607,6 +640,7 @@ class _PoseCameraPageState extends State<PoseCameraPage> with WidgetsBindingObse
     Navigator.pushReplacement(
       context, 
       MaterialPageRoute(builder: (_) => SessionSummaryPage(
+        sessionId: _currentSessionId, 
         isCompleted: isCompleted,
         telemetryData: _sessionTelemetry,
         totalDuration: finalDuration,

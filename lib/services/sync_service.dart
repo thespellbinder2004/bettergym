@@ -4,10 +4,20 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../utils/api_constants.dart';
 import 'local_db_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SyncService {
   static Future<void> pushUnsyncedData() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? authToken = prefs.getString('auth_token');
+      final int? userId = prefs.getInt('user_id');
+
+      if (authToken == null || userId == null) {
+        debugPrint("SyncService: Aborting sync. No valid user credentials found.");
+        return;
+      }
+
       final unsyncedSessions = await LocalDBService.instance.getUnsyncedSessions();
       
       if (unsyncedSessions.isEmpty) {
@@ -19,8 +29,9 @@ class SyncService {
 
       for (var sessionData in unsyncedSessions) {
         final Map<String, dynamic> payload = {
+          "auth_token": authToken, 
+          "user_id": userId,      
           "session_id": sessionData['id'],
-          "user_id": sessionData['user_id'],
           "routine_id": sessionData['routine_id'],
           "status": sessionData['status'],
           "global_score": sessionData['global_score'],

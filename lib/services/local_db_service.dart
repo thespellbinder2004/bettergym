@@ -50,6 +50,36 @@ class LocalDBService {
       },
     );
   }
+  
+  // --- NEW: CREATE SESSION CHECKPOINT ---
+  Future<void> createSessionRecord(Map<String, dynamic> sessionData) async {
+    final db = await database;
+    // Use ConflictAlgorithm.ignore so we don't overwrite it if we re-save
+    await db.insert('workout_sessions', sessionData, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  // --- NEW: APPEND EXERCISE TELEMETRY ---
+  Future<void> appendExerciseTelemetry(Map<String, dynamic> exerciseData) async {
+    final db = await database;
+    exerciseData['rep_scores_array'] = jsonEncode(exerciseData['rep_scores_array']);
+    await db.insert('exercise_telemetry', exerciseData);
+  }
+
+  // --- NEW: UPDATE SESSION STATUS & SCORE ---
+  Future<void> updateSessionCompletion(String sessionId, String status, int globalScore, int durationSeconds) async {
+    final db = await database;
+    await db.update(
+      'workout_sessions',
+      {
+        'status': status,
+        'global_score': globalScore,
+        'duration_seconds': durationSeconds,
+        'sync_status': 0 // Reset sync status so the server gets the final update
+      },
+      where: 'id = ?',
+      whereArgs: [sessionId]
+    );
+  }
 
   // --- SAVE WORKOUT TO PHONE ---
   Future<void> saveWorkoutOffline(Map<String, dynamic> sessionData, List<Map<String, dynamic>> exercisesData) async {
@@ -141,5 +171,50 @@ class LocalDBService {
         }
       }
     });
+  }
+  // --- DASHBOARD ANALYTICS ENGINE ---
+  Future<Map<String, dynamic>> getDashboardAggregates() async {
+    final db = await database;
+
+    // 1. Volume Metrics (Total Time & Total Clean Reps)
+    final volumeResult = await db.rawQuery('''
+      SELECT 
+        (SELECT SUM(duration_seconds) FROM workout_sessions WHERE status = 'COMPLETED') as total_time,
+        (SELECT SUM(good_reps) FROM exercise_telemetry) as total_reps
+    ''');
+
+    // 2. Diagnostics (Exercise Averages)
+    final diagnosticsResult = await db.rawQuery('''
+      SELECT exercise_name, AVG(exercise_score) as avg_score, COUNT(id) as total_sets
+      FROM exercise_telemetry 
+      GROUP BY exercise_name 
+      HAVING total_sets > 0
+      ORDER BY avg_score DESC
+    ''');
+
+    // 3. Timeline (Last 5 Sessions)
+    final recentSessions = await db.query(
+      'workout_sessions',
+      where: 'status = ?',
+      whereArgs: ['COMPLETED'],
+      orderBy: 'created_at DESC',
+      limit: 5
+    );
+
+    // 4. THE NEW FATIGUE & HEATMAP ENGINE
+    final rawTelemetry = await db.rawQuery('''
+      SELECT exercise_name, rep_scores_array, good_reps, bad_reps
+      FROM exercise_telemetry 
+      JOIN workout_sessions ON exercise_telemetry.session_id = workout_sessions.id
+      WHERE workout_sessions.status = 'COMPLETED' 
+      AND workout_sessions.created_at >= date('now', '-7 days')
+    ''');
+
+    return {
+      'volume': volumeResult.isNotEmpty ? volumeResult.first : {'total_time': 0, 'total_reps': 0},
+      'diagnostics': diagnosticsResult,
+      'timeline': recentSessions,
+      'raw_telemetry': rawTelemetry, // NEW
+    };
   }
 }
