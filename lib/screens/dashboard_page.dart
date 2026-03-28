@@ -5,8 +5,9 @@ import 'package:fl_chart/fl_chart.dart';
 import '../main.dart'; 
 import 'session_setup_page.dart'; 
 import '../services/local_db_service.dart';
+import '../services/api_services.dart';
 import 'progress_report_page.dart';
-import 'session_summary_page.dart';
+import 'session_summary_page.dart'; 
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -31,8 +32,9 @@ class _DashboardPageState extends State<DashboardPage> {
     _loadDashboardData();
   }
 
+  // --- THE COLOR SOP ---
   Color _getScoreColor(double score) {
-    if (score >= 100) return const Color(0xFF8B00FF); 
+    if (score >= 100) return const Color(0xFF8B00FF); // Violet
     if (score >= 75) return mintGreen;
     if (score >= 50) return Colors.yellow;
     if (score >= 25) return Colors.orange;
@@ -41,6 +43,9 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _loadDashboardData() async {
     try {
+      // Trigger background sync without freezing the UI
+      ApiService.syncOfflineData();
+
       final aggregates = await LocalDBService.instance.getDashboardAggregates();
       final rawEndurance = await LocalDBService.instance.getRawTelemetryForPeriod(_enduranceLookback);
       
@@ -131,7 +136,13 @@ class _DashboardPageState extends State<DashboardPage> {
     final timeline = List<Map<String, dynamic>>.from(_data['timeline'] ?? []);
     final bool isDayZero = timeline.isEmpty;
 
-    if (isDayZero) return Scaffold(backgroundColor: navyBlue, appBar: AppBar(backgroundColor: navyBlue, elevation: 0, title: const Text('TELEMETRY DASHBOARD', style: TextStyle(color: mintGreen, fontWeight: FontWeight.bold, letterSpacing: 2.0, fontSize: 16))), body: _buildZeroState());
+    if (isDayZero) {
+      return Scaffold(
+        backgroundColor: navyBlue, 
+        appBar: AppBar(backgroundColor: navyBlue, elevation: 0, title: const Text('TELEMETRY DASHBOARD', style: TextStyle(color: mintGreen, fontWeight: FontWeight.bold, letterSpacing: 2.0, fontSize: 16))), 
+        body: _buildZeroState()
+      );
+    }
 
     final lastKnown = _data['last_known'];
     final bool workedToday = lastKnown != null && lastKnown['relative_date'] == 'TODAY';
@@ -150,12 +161,13 @@ class _DashboardPageState extends State<DashboardPage> {
           padding: const EdgeInsets.all(16),
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
+            // --- GIMMICK: LATEST ACTIVITY TRANSPORT ---
             if (_transportActive && timeline.isNotEmpty) ...[
               _buildTimelineNode(timeline.first),
               const SizedBox(height: 24),
             ],
 
-            // --- 1. BENTO BOXES (Weekly / Monthly) ---
+            // --- 1. BENTO BOXES ---
             Row(
               children: [
                 Expanded(child: _buildBentoRing("Weekly Average", (_data['bento']['weekly_avg'] ?? 0.0))),
@@ -185,7 +197,7 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: 24),
             ],
 
-            // --- 4. CONTEXTUAL INTELLIGENCE (Today / Last Known) ---
+            // --- 4. CONTEXTUAL INTELLIGENCE ---
             if (lastKnown != null) ...[
               Text(lastKnown['relative_date'] == 'TODAY' ? "TODAY'S INTEL" : "LAST SESSION (${lastKnown['relative_date']})", style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
               const SizedBox(height: 8),
@@ -202,7 +214,7 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: 24),
             ],
 
-            // --- 5. WEEKLY VOLUME METRICS ---
+            // --- 5. WEEKLY VOLUME ---
             if (weeklyVol != null && weeklyVol['active_days'] != null && weeklyVol['active_days'] > 0) ...[
               const Text("WEEKLY PERFORMANCE", style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
               const SizedBox(height: 8),
@@ -221,7 +233,7 @@ class _DashboardPageState extends State<DashboardPage> {
               const SizedBox(height: 24),
             ],
 
-            // --- 6. SWIPABLE GRAPHS (7 / 30 Days) ---
+            // --- 6. SWIPABLE GRAPHS ---
             _buildSwipableGraphs(),
             const SizedBox(height: 24),
 
@@ -229,11 +241,11 @@ class _DashboardPageState extends State<DashboardPage> {
             _buildDiagnostics(),
             const SizedBox(height: 24),
 
-            // --- 8. FORM ENDURANCE (Configurable) ---
+            // --- 8. FORM ENDURANCE ---
             _buildEnduranceSection(),
             const SizedBox(height: 24),
 
-            // --- 9. LATEST ACTIVITY ---
+            // --- 9. LATEST ACTIVITY TIMELINE ---
             if (!_transportActive) ...[
               const Text('LATEST ACTIVITY', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
               const SizedBox(height: 8),
@@ -456,7 +468,6 @@ class _DashboardPageState extends State<DashboardPage> {
     double score = (session['global_score'] as num).toDouble();
     Color sColor = _getScoreColor(score);
     
-    // Calculate Relative Time string
     DateTime dt = DateTime.parse(session['created_at']).toLocal();
     DateTime now = DateTime.now();
     int diffDays = DateTime(now.year, now.month, now.day).difference(DateTime(dt.year, dt.month, dt.day)).inDays;
@@ -476,18 +487,15 @@ class _DashboardPageState extends State<DashboardPage> {
         subtitle: Text('Score Evaluated', style: const TextStyle(color: Colors.grey, fontSize: 12)),
         trailing: const Icon(Icons.chevron_right, color: Colors.white38, size: 24),
         onTap: () async {
-          // 1. Fetch the raw telemetry rows for this specific session
+          // 1. Fetch historical raw data
           final rawTelemetry = await LocalDBService.instance.getTelemetryForSession(session['id']);
 
-          // 2. Reconstruct the ExerciseTelemetry objects from the database rows
+          // 2. Reconstruct ExerciseTelemetry objects
           List<ExerciseTelemetry> historicalData = rawTelemetry.map((row) {
-            
             List<double> scores = [];
             try {
               scores = List<double>.from(jsonDecode(row['rep_scores_array']).map((e) => (e as num).toDouble()));
-            } catch (e) {
-              debugPrint("Error decoding historical array: $e");
-            }
+            } catch (_) {}
 
             bool isTimeBased = row['exercise_name'].toString().toLowerCase().contains('plank');
 
@@ -500,14 +508,12 @@ class _DashboardPageState extends State<DashboardPage> {
             ex.goodReps = row['good_reps'];
             ex.badReps = row['bad_reps'];
             ex.repScores = scores;
-            
             return ex;
           }).toList();
 
-          // 3. Ensure the widget is still on screen before navigating
           if (!context.mounted) return;
 
-          // 4. Push to the Progress Report Page
+          // 3. Push to Progress Report
           Navigator.push(
             context,
             MaterialPageRoute(
