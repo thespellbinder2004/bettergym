@@ -5,6 +5,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../main.dart'; 
 import 'session_setup_page.dart'; 
 import '../services/local_db_service.dart';
+// Note: Ensure you have your ProgressReportPage imported when you wire up the arrows later
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -15,15 +16,13 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   bool _isLoading = true;
-  bool _transportActive = false; // Gimmick for transporting latest activity
+  bool _transportActive = false; // Gimmick state
   int _enduranceLookback = 7;
 
   Map<String, dynamic> _data = {};
   Map<String, List<double>> _fatigueCurves = {};
   String? _selectedFatigueExercise;
-  
   List<int> _weeklyHeatmap = [0, 0, 0, 0, 0, 0, 0];
-  final List<String> _days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
   @override
   void initState() {
@@ -31,13 +30,13 @@ class _DashboardPageState extends State<DashboardPage> {
     _loadDashboardData();
   }
 
-  // --- 1. NEW COLOR SOP ---
+  // --- 1. COLOR SOP ---
   Color _getScoreColor(double score) {
     if (score >= 100) return const Color(0xFF8B00FF); // Violet
-    if (score >= 75) return mintGreen; // Green
-    if (score >= 50) return Colors.yellow; // Yellow
-    if (score >= 25) return Colors.orange; // Orange
-    return neonRed; // Red
+    if (score >= 75) return mintGreen;
+    if (score >= 50) return Colors.yellow;
+    if (score >= 25) return Colors.orange;
+    return neonRed;
   }
 
   Future<void> _loadDashboardData() async {
@@ -46,7 +45,7 @@ class _DashboardPageState extends State<DashboardPage> {
       final rawEndurance = await LocalDBService.instance.getRawTelemetryForPeriod(_enduranceLookback);
       
       _processEndurance(rawEndurance);
-      _generateHeatmap(List<Map<String, dynamic>>.from(aggregates['timeline'] ?? []));
+      _processWeeklyConsistency(aggregates['timeline'] ?? []);
 
       if (mounted) {
         setState(() {
@@ -60,20 +59,20 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  void _generateHeatmap(List<Map<String, dynamic>> timeline) {
-    List<int> generated = [0, 0, 0, 0, 0, 0, 0];
+  void _processWeeklyConsistency(List<dynamic> sessions) {
+    List<int> generatedHeatmap = [0, 0, 0, 0, 0, 0, 0];
     final now = DateTime.now();
     final startOfWeek = DateTime(now.year, now.month, now.day).subtract(Duration(days: now.weekday - 1));
 
-    for (var s in timeline) {
+    for (var s in sessions) {
       final date = DateTime.parse(s['created_at']).toLocal();
       final score = s['global_score'] as int;
       if (date.isAfter(startOfWeek.subtract(const Duration(seconds: 1)))) {
         int dayIndex = date.weekday - 1; 
-        generated[dayIndex] = score; // Store the exact score to color it later
+        generatedHeatmap[dayIndex] = score > 75 ? 2 : 1; 
       }
     }
-    _weeklyHeatmap = generated;
+    _weeklyHeatmap = generatedHeatmap;
   }
 
   void _processEndurance(List<Map<String, dynamic>> telemetry) {
@@ -84,6 +83,7 @@ class _DashboardPageState extends State<DashboardPage> {
         rawArrays.putIfAbsent(row['exercise_name'], () => []).add(scores);
       } catch (_) {}
     }
+    
     Map<String, List<double>> averaged = {};
     rawArrays.forEach((name, sets) {
       int maxLen = sets.map((s) => s.length).reduce(math.max);
@@ -95,11 +95,10 @@ class _DashboardPageState extends State<DashboardPage> {
       }
       averaged[name] = curve;
     });
+    
     setState(() {
       _fatigueCurves = averaged;
-      if (_fatigueCurves.isNotEmpty && _selectedFatigueExercise == null) {
-        _selectedFatigueExercise = _fatigueCurves.keys.first;
-      }
+      if (_fatigueCurves.isNotEmpty) _selectedFatigueExercise = _fatigueCurves.keys.first;
     });
   }
 
@@ -110,24 +109,13 @@ class _DashboardPageState extends State<DashboardPage> {
     return h > 0 ? "${h}h ${m}m" : "${m}m";
   }
 
-  String _getRelativeDate(String sqlDate) {
-    final date = DateTime.parse(sqlDate).toLocal();
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final compare = DateTime(date.year, date.month, date.day);
-    final diff = today.difference(compare).inDays;
-    
-    if (diff == 0) return "Today";
-    if (diff == 1) return "Yesterday";
-    return "$diff Days ago";
-  }
-
   Widget _buildGlassCard({required Widget child, EdgeInsetsGeometry? padding}) {
     return Container(
       padding: padding ?? const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: darkSlate, borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        color: darkSlate,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: mintGreen.withOpacity(0.1)),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: child,
@@ -140,14 +128,14 @@ class _DashboardPageState extends State<DashboardPage> {
       return const Scaffold(backgroundColor: navyBlue, body: Center(child: CircularProgressIndicator(color: mintGreen)));
     }
 
-    final bento = _data['bento'] ?? {};
-    double wAvg = (bento['weekly_avg'] as num?)?.toDouble() ?? 0.0;
-    double mAvg = (bento['monthly_avg'] as num?)?.toDouble() ?? 0.0;
-    
+    final timeline = List<Map<String, dynamic>>.from(_data['timeline'] ?? []);
+    final bool isDayZero = timeline.isEmpty;
+
+    if (isDayZero) return Scaffold(backgroundColor: navyBlue, appBar: AppBar(backgroundColor: navyBlue, elevation: 0, title: const Text('TELEMETRY DASHBOARD', style: TextStyle(color: mintGreen, fontWeight: FontWeight.bold, letterSpacing: 2.0, fontSize: 16))), body: _buildZeroState());
+
     final lastKnown = _data['last_known'];
     final bool workedToday = lastKnown != null && lastKnown['relative_date'] == 'TODAY';
-    
-    final timeline = List<Map<String, dynamic>>.from(_data['timeline'] ?? []);
+    final weeklyVol = _data['weekly_volume'];
 
     return Scaffold(
       backgroundColor: navyBlue,
@@ -155,103 +143,129 @@ class _DashboardPageState extends State<DashboardPage> {
         backgroundColor: navyBlue, elevation: 0,
         title: const Text('TELEMETRY DASHBOARD', style: TextStyle(color: mintGreen, fontWeight: FontWeight.bold, letterSpacing: 2.0, fontSize: 16)), 
       ),
-      body: timeline.isEmpty 
-        ? _buildZeroState()
-        : RefreshIndicator(
-            color: mintGreen, backgroundColor: darkSlate, onRefresh: _loadDashboardData,
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              physics: const AlwaysScrollableScrollPhysics(),
+      body: RefreshIndicator(
+        color: mintGreen, backgroundColor: darkSlate,
+        onRefresh: _loadDashboardData,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            // --- GIMMICK: TRANSPORT LATEST ACTIVITY ---
+            if (_transportActive && timeline.isNotEmpty) ...[
+              _buildTimelineNode(timeline.first),
+              const SizedBox(height: 24),
+            ],
+
+            // --- 1. BENTO BOXES (Weekly / Monthly) ---
+            Row(
               children: [
-                // --- GIMMICK: Transport Latest Activity to Top ---
-                if (_transportActive && timeline.isNotEmpty) ...[
-                  _buildTimelineNode(timeline.first),
-                  const SizedBox(height: 24),
-                ],
-
-                // --- 1. COMPARATIVE BENTO BOXES ---
-                Row(
-                  children: [
-                    Expanded(child: _buildBentoRing("Weekly Average", wAvg)),
-                    const SizedBox(width: 12),
-                    Expanded(child: _buildBentoRing("Monthly Progress", mAvg)),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // --- 2. CONSISTENCY HEATMAP ---
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: List.generate(7, (index) => _buildHeatmapDay(_days[index], _weeklyHeatmap[index])),
-                ),
-                const SizedBox(height: 24),
-
-                // --- 3. ACTION HUB (If no workout today) ---
-                if (!workedToday) ...[
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: mintGreen, foregroundColor: navyBlue, minimumSize: const Size.fromHeight(56), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SessionSetupPage())),
-                    child: const Text("SETUP A SESSION", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-                  ),
-                  const SizedBox(height: 24),
-                ],
-
-                // --- 4. TODAY'S INTEL (Fallback Logic) ---
-                if (lastKnown != null) ...[
-                  _buildContextualCard(lastKnown),
-                  const SizedBox(height: 24),
-                ],
-
-                // --- 5. WEEKLY VOLUME ---
-                if (_data['weekly_volume'] != null && _data['weekly_volume']['total_reps'] != null) ...[
-                  _buildWeeklySection(_data['weekly_volume']),
-                  const SizedBox(height: 24),
-                ],
-
-                // --- 6. SWIPABLE TREND GRAPHS ---
-                _buildSwipableGraphs(),
-                const SizedBox(height: 24),
-
-                // --- 7. FORM DIAGNOSTICS ---
-                _buildDiagnostics(),
-                const SizedBox(height: 24),
-
-                // --- 8. FORM ENDURANCE ---
-                _buildEnduranceSection(),
-                const SizedBox(height: 24),
-
-                // --- 9. LATEST ACTIVITY ---
-                if (!_transportActive && timeline.isNotEmpty) ...[
-                  const Text('LATEST ACTIVITY', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-                  const SizedBox(height: 8),
-                  ...timeline.take(5).map((session) => _buildTimelineNode(session)),
-                ],
-                const SizedBox(height: 40),
+                Expanded(child: _buildBentoRing("Weekly Average", (_data['bento']['weekly_avg'] ?? 0.0))),
+                const SizedBox(width: 12),
+                Expanded(child: _buildBentoRing("Monthly Progress", (_data['bento']['monthly_avg'] ?? 0.0))),
               ],
             ),
-          ),
+            const SizedBox(height: 24),
+
+            // --- 2. CONSISTENCY HEATMAP ---
+            _buildGlassCard(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: List.generate(7, (i) => _buildHeatmapDay(['M','T','W','T','F','S','S'][i], _weeklyHeatmap[i])),
+              ),
+            ),
+            const SizedBox(height: 24),
+
+            // --- 3. ACTION HUB (If no workout today) ---
+            if (!workedToday) ...[
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: mintGreen, foregroundColor: navyBlue, minimumSize: const Size.fromHeight(56), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SessionSetupPage())),
+                child: const Text('SETUP A SESSION', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, letterSpacing: 1.2)),
+              ),
+              const SizedBox(height: 24),
+            ],
+
+            // --- 4. CONTEXTUAL INTELLIGENCE (Today / Last Known) ---
+            if (lastKnown != null) ...[
+              Text(lastKnown['relative_date'] == 'TODAY' ? "TODAY'S INTEL" : "LAST SESSION (${lastKnown['relative_date']})", style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+              const SizedBox(height: 8),
+              _buildGlassCard(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    _infoRow(Icons.analytics, "Avg Score", "${lastKnown['global_score']}%", valueColor: _getScoreColor((lastKnown['global_score'] as num).toDouble())),
+                    const Divider(color: Colors.white10),
+                    _infoRow(Icons.timer, "Duration", _formatTotalTime(lastKnown['duration_seconds'])),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+
+            // --- 5. WEEKLY VOLUME METRICS ---
+            if (weeklyVol != null && weeklyVol['active_days'] != null && weeklyVol['active_days'] > 0) ...[
+              const Text("WEEKLY PERFORMANCE", style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+              const SizedBox(height: 8),
+              _buildGlassCard(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    _infoRow(Icons.calendar_today, "Active Days", "${weeklyVol['active_days']} / 7"),
+                    const Divider(color: Colors.white10),
+                    _infoRow(Icons.timer, "Total Duration", _formatTotalTime(weeklyVol['total_time'])),
+                    const Divider(color: Colors.white10),
+                    _infoRow(Icons.fitness_center, "Total Clean Reps", "${weeklyVol['total_reps'] ?? 0}"),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+
+            // --- 6. SWIPABLE GRAPHS (7 / 30 Days) ---
+            _buildSwipableGraphs(),
+            const SizedBox(height: 24),
+
+            // --- 7. FORM DIAGNOSTICS ---
+            _buildDiagnostics(),
+            const SizedBox(height: 24),
+
+            // --- 8. FORM ENDURANCE (Configurable) ---
+            _buildEnduranceSection(),
+            const SizedBox(height: 24),
+
+            // --- 9. LATEST ACTIVITY ---
+            if (!_transportActive) ...[
+              const Text('LATEST ACTIVITY', style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+              const SizedBox(height: 8),
+              ...timeline.take(5).map((s) => _buildTimelineNode(s)),
+            ],
+            const SizedBox(height: 40),
+          ],
+        ),
+      ),
     );
   }
 
   // --- WIDGET BUILDERS ---
 
   Widget _buildBentoRing(String label, double score) {
-    Color col = score == 0.0 ? Colors.white10 : _getScoreColor(score);
+    Color ringColor = _getScoreColor(score);
     return _buildGlassCard(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 20),
+          Text(label, style: const TextStyle(color: Colors.grey, fontSize: 10, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
           Center(
             child: SizedBox(
               height: 80, width: 80,
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  CircularProgressIndicator(value: score == 0.0 ? 1.0 : score / 100, strokeWidth: 8, backgroundColor: Colors.black26, color: col),
-                  Center(child: Text(score == 0.0 ? "--" : "${score.toInt()}%", style: TextStyle(color: score == 0.0 ? Colors.grey : Colors.white, fontWeight: FontWeight.bold, fontSize: 20))),
+                  CircularProgressIndicator(value: score > 0 ? score / 100 : 0.0, strokeWidth: 8, backgroundColor: Colors.white10, color: ringColor),
+                  Center(child: Text(score > 0 ? "${score.toInt()}%" : "--", style: TextStyle(color: score > 0 ? ringColor : Colors.grey, fontWeight: FontWeight.bold, fontSize: 18))),
                 ],
               ),
             ),
@@ -261,13 +275,13 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildHeatmapDay(String day, int score) {
-    Color blockColor = score == 0 ? Colors.black26 : _getScoreColor(score.toDouble());
+  Widget _buildHeatmapDay(String day, int intensity) {
+    Color blockColor = intensity == 0 ? navyBlue : (intensity == 1 ? mintGreen.withOpacity(0.4) : mintGreen);
     return Column(
       children: [
         Container(
-          width: 36, height: 36,
-          decoration: BoxDecoration(color: blockColor, borderRadius: BorderRadius.circular(8), border: Border.all(color: score == 0 ? Colors.white10 : Colors.transparent)),
+          width: 32, height: 32,
+          decoration: BoxDecoration(color: blockColor, borderRadius: BorderRadius.circular(6), border: Border.all(color: intensity == 0 ? Colors.grey.withOpacity(0.2) : Colors.transparent)),
         ),
         const SizedBox(height: 8),
         Text(day, style: const TextStyle(color: Colors.grey, fontSize: 12)),
@@ -275,59 +289,18 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _buildContextualCard(Map<String, dynamic> last) {
-    String title = last['relative_date'] == 'TODAY' ? "TODAY'S INTEL" : "LAST SESSION (${last['relative_date']})";
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-        const SizedBox(height: 8),
-        _buildGlassCard(
-          child: Column(
-            children: [
-              _infoRow(Icons.bolt, "Avg Score", "${last['global_score']}%", valColor: _getScoreColor((last['global_score'] as num).toDouble())),
-              const Divider(color: Colors.white10, height: 24),
-              _infoRow(Icons.timer, "Duration", _formatTotalTime(last['duration_seconds'])),
-              const Divider(color: Colors.white10, height: 24),
-              // We don't have total_reps purely for ONE session in the raw DB return easily, so we can display relative date instead.
-              _infoRow(Icons.calendar_today, "Recorded", _getRelativeDate(last['created_at'])),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildWeeklySection(Map<String, dynamic> v) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text("THIS WEEK'S VOLUME", style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-        const SizedBox(height: 8),
-        _buildGlassCard(
-          child: Column(
-            children: [
-              _infoRow(Icons.calendar_month, "Active Days", "${v['active_days']} / 7"),
-              const Divider(color: Colors.white10, height: 24),
-              _infoRow(Icons.timer_outlined, "Total Duration", _formatTotalTime(v['total_time'] as int?)),
-              const Divider(color: Colors.white10, height: 24),
-              _infoRow(Icons.fitness_center, "Total Reps", "${v['total_reps'] ?? 0}"),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _infoRow(IconData icon, String label, String val, {Color? valColor}) {
-    return Row(
-      children: [
-        Icon(icon, color: mintGreen, size: 18),
-        const SizedBox(width: 12),
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14)),
-        const Spacer(),
-        Text(val, style: TextStyle(color: valColor ?? Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-      ],
+  Widget _infoRow(IconData icon, String label, String val, {Color? valueColor}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        children: [
+          Icon(icon, color: mintGreen, size: 16),
+          const SizedBox(width: 12),
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+          const Spacer(),
+          Text(val, style: TextStyle(color: valueColor ?? Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+        ],
+      ),
     );
   }
 
@@ -349,39 +322,37 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _buildTrendChart(String title, List<dynamic> data) {
-    List<FlSpot> spots = [];
-    for (int i = 0; i < data.length; i++) {
-      spots.add(FlSpot(i.toDouble(), (data[i]['avg_score'] as num).toDouble()));
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
-        const SizedBox(height: 8),
-        _buildGlassCard(
-          padding: const EdgeInsets.fromLTRB(16, 24, 24, 16),
-          child: SizedBox(
-            height: 140,
+    List<FlSpot> spots = data.asMap().entries.map((e) => FlSpot(e.key.toDouble(), (e.value['avg_score'] as num).toDouble() / 100.0)).toList();
+    return _buildGlassCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+              const Icon(Icons.swipe, color: Colors.white24, size: 16),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Expanded(
             child: LineChart(LineChartData(
-              gridData: const FlGridData(show: false),
+              gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (val) => FlLine(color: Colors.white10, strokeWidth: 1)),
               titlesData: const FlTitlesData(show: false),
               borderData: FlBorderData(show: false),
-              minY: 0, maxY: 100,
+              minY: 0, maxY: 1.0,
               lineBarsData: [
                 LineChartBarData(
                   spots: spots, isCurved: true, color: mintGreen, barWidth: 3,
-                  dotData: FlDotData(
-                    show: true,
-                    getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(radius: 4, color: _getScoreColor(spot.y), strokeWidth: 0),
-                  ),
-                  belowBarData: BarAreaData(show: true, gradient: LinearGradient(colors: [mintGreen.withOpacity(0.2), Colors.transparent], begin: Alignment.topCenter, end: Alignment.bottomCenter)),
+                  dotData: FlDotData(show: true, getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(radius: 4, color: _getScoreColor(spot.y * 100), strokeWidth: 0)),
+                  belowBarData: BarAreaData(show: true, gradient: LinearGradient(colors: [mintGreen.withOpacity(0.3), Colors.transparent], begin: Alignment.topCenter, end: Alignment.bottomCenter)),
                 )
-              ],
+              ]
             )),
-          ),
-        ),
-      ],
+          )
+        ],
+      ),
     );
   }
 
@@ -399,7 +370,7 @@ class _DashboardPageState extends State<DashboardPage> {
             children: [
               ...diag.take(2).map((e) => _diagRow(e)),
               if (diag.length > 2) ...[
-                const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(color: Colors.white10)),
+                const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider(color: Colors.white10, height: 1)),
                 ...diag.skip(diag.length - 2).map((e) => _diagRow(e)),
               ]
             ],
@@ -411,25 +382,25 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _diagRow(Map<String, dynamic> e) {
     double score = (e['avg_score'] as num).toDouble();
+    Color c = _getScoreColor(score);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
         children: [
-          Text(e['exercise_name'].toString().toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), 
-          const Spacer(), 
+          Text(e['exercise_name'].toString().toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+          const Spacer(),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(color: _getScoreColor(score).withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: _getScoreColor(score).withOpacity(0.5))),
-            child: Text("${score.toInt()}%", style: TextStyle(color: _getScoreColor(score), fontWeight: FontWeight.bold)),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: c.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: c.withOpacity(0.5))),
+            child: Text("${score.toInt()}%", style: TextStyle(color: c, fontWeight: FontWeight.bold, fontSize: 12)),
           )
-        ]
+        ],
       ),
     );
   }
 
   Widget _buildEnduranceSection() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -437,57 +408,60 @@ class _DashboardPageState extends State<DashboardPage> {
             const Text("FORM ENDURANCE", style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
             DropdownButton<int>(
               value: _enduranceLookback,
-              dropdownColor: darkSlate, underline: const SizedBox(),
-              icon: const Icon(Icons.keyboard_arrow_down, color: mintGreen, size: 16),
-              style: const TextStyle(color: mintGreen, fontSize: 12, fontWeight: FontWeight.bold),
-              items: [7, 14, 30].map((e) => DropdownMenuItem(value: e, child: Text("$e Days"))).toList(),
+              dropdownColor: navyBlue, underline: const SizedBox(),
+              icon: const Icon(Icons.arrow_drop_down, color: mintGreen),
+              style: const TextStyle(color: mintGreen, fontWeight: FontWeight.bold, fontSize: 12),
+              items: [7, 14, 30].map((e) => DropdownMenuItem(value: e, child: Text("Last $e Days"))).toList(),
               onChanged: (v) { setState(() { _enduranceLookback = v!; _loadDashboardData(); }); },
             )
           ],
         ),
-        const SizedBox(height: 8),
-        if (_selectedFatigueExercise != null) _buildGlassCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              DropdownButton<String>(
-                value: _selectedFatigueExercise,
-                dropdownColor: darkSlate, isExpanded: true, underline: const Divider(color: Colors.white10),
-                style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                items: _fatigueCurves.keys.map((String key) => DropdownMenuItem(value: key, child: Text(key.toUpperCase()))).toList(),
-                onChanged: (val) => setState(() => _selectedFatigueExercise = val),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                height: 120,
-                child: LineChart(LineChartData(
-                  gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (val) => FlLine(color: Colors.white10, strokeWidth: 1)),
-                  titlesData: FlTitlesData(
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 22, getTitlesWidget: (value, meta) => Text(value.toInt().toString(), style: const TextStyle(color: Colors.grey, fontSize: 10)))),
-                  ),
-                  borderData: FlBorderData(show: false),
-                  minY: 0, maxY: 1.0,
-                  lineBarsData: [
-                    LineChartBarData(
-                      spots: _fatigueCurves[_selectedFatigueExercise]!.asMap().entries.map((e) => FlSpot(e.key.toDouble() + 1, e.value)).toList(),
-                      isCurved: true, color: mintGreen, barWidth: 3, dotData: const FlDotData(show: false),
-                    )
-                  ]
-                )),
-              )
-            ],
-          )
-        ) else _buildGlassCard(child: const Center(child: Text("No endurance data available.", style: TextStyle(color: Colors.grey)))),
+        if (_selectedFatigueExercise != null && _fatigueCurves.isNotEmpty) 
+          _buildGlassCard(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButton<String>(
+                  value: _selectedFatigueExercise,
+                  isExpanded: true, dropdownColor: navyBlue, underline: const Divider(color: Colors.white10),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                  items: _fatigueCurves.keys.map((k) => DropdownMenuItem(value: k, child: Text(k.toUpperCase()))).toList(),
+                  onChanged: (val) => setState(() => _selectedFatigueExercise = val),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 140,
+                  child: LineChart(LineChartData(
+                    gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (val) => FlLine(color: Colors.white10, strokeWidth: 1)),
+                    titlesData: const FlTitlesData(show: false),
+                    borderData: FlBorderData(show: false),
+                    minY: 0, maxY: 1.0,
+                    lineBarsData: [
+                      LineChartBarData(
+                        spots: _fatigueCurves[_selectedFatigueExercise]!.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value)).toList(),
+                        isCurved: true, color: mintGreen, barWidth: 3, dotData: const FlDotData(show: false),
+                        belowBarData: BarAreaData(show: true, gradient: LinearGradient(colors: [mintGreen.withOpacity(0.3), Colors.transparent], begin: Alignment.topCenter, end: Alignment.bottomCenter)),
+                      )
+                    ]
+                  )),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
 
   Widget _buildTimelineNode(Map<String, dynamic> session) {
     double score = (session['global_score'] as num).toDouble();
-    String timeStr = _getRelativeDate(session['created_at']);
+    Color sColor = _getScoreColor(score);
+    
+    // Calculate Relative Time string
+    DateTime dt = DateTime.parse(session['created_at']).toLocal();
+    DateTime now = DateTime.now();
+    int diffDays = DateTime(now.year, now.month, now.day).difference(DateTime(dt.year, dt.month, dt.day)).inDays;
+    String timeStr = diffDays == 0 ? "Today" : (diffDays == 1 ? "Yesterday" : "$diffDays Days ago");
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -496,34 +470,41 @@ class _DashboardPageState extends State<DashboardPage> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         leading: Container(
           width: 48, height: 48,
-          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: _getScoreColor(score), width: 2), color: Colors.black.withOpacity(0.2)),
-          child: Center(child: Text(score.toInt().toString(), style: TextStyle(color: _getScoreColor(score), fontWeight: FontWeight.bold, fontSize: 16))),
+          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: sColor, width: 2), color: Colors.black.withOpacity(0.2)),
+          child: Center(child: Text("${score.toInt()}", style: TextStyle(color: sColor, fontWeight: FontWeight.bold, fontSize: 16))),
         ),
         title: Text(timeStr, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        subtitle: const Text('Tap to view report', style: TextStyle(color: Colors.grey, fontSize: 12)),
-        trailing: const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+        subtitle: Text('Score Evaluated', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        trailing: const Icon(Icons.chevron_right, color: Colors.white38, size: 24),
         onTap: () {
-          // Future Connection: Pass the session['id'] here when linking to SessionSummaryPage/ProgressReportPage
-          debugPrint("Transporting to Session ID: ${session['id']}");
+          // Future: Route to ProgressReportPage
         },
       ),
     );
   }
 
   Widget _buildZeroState() {
-     return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-       const Icon(Icons.analytics, size: 64, color: Colors.white10),
-       const SizedBox(height: 16),
-       const Text("NO DATA YET", style: TextStyle(color: Colors.white, letterSpacing: 2, fontWeight: FontWeight.bold)),
-       const SizedBox(height: 24),
-       Padding(
-         padding: const EdgeInsets.symmetric(horizontal: 40),
-         child: ElevatedButton(
-           style: ElevatedButton.styleFrom(backgroundColor: mintGreen, foregroundColor: navyBlue, minimumSize: const Size.fromHeight(56), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-           onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SessionSetupPage())), 
-           child: const Text("SETUP A SESSION", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2))
-         ),
-       )
-     ]));
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: _buildGlassCard(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: mintGreen.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.power_settings_new, size: 48, color: mintGreen)),
+              const SizedBox(height: 24),
+              const Text('NO TELEMETRY', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
+              const SizedBox(height: 32),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: mintGreen, foregroundColor: navyBlue, minimumSize: const Size.fromHeight(56), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SessionSetupPage())),
+                child: const Text('SETUP A SESSION', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
