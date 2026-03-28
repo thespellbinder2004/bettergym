@@ -26,7 +26,6 @@ class ProgressReportPage extends StatelessWidget {
     return "${twoDigits(d.inMinutes.remainder(60))}:${twoDigits(d.inSeconds.remainder(60))}";
   }
 
-  // --- THE MISSING TIME FORMATTER ---
   String _formatTimeString(int totalSeconds) {
     if (totalSeconds == 0) return "0s";
     int m = totalSeconds ~/ 60;
@@ -51,7 +50,6 @@ class ProgressReportPage extends StatelessWidget {
       ),
       body: Column(
         children: [
-          // --- MACRO STATS ---
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Row(
@@ -65,7 +63,6 @@ class ProgressReportPage extends StatelessWidget {
           ),
           const Divider(color: Colors.white24, height: 1),
           
-          // --- MICRO STATS (The Expandable Cards) ---
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(16),
@@ -76,7 +73,6 @@ class ProgressReportPage extends StatelessWidget {
             ),
           ),
 
-          // --- FOOTER NAVIGATION ---
           Padding(
             padding: const EdgeInsets.all(24.0),
             child: ElevatedButton.icon(
@@ -108,7 +104,6 @@ class ProgressReportPage extends StatelessWidget {
     );
   }
 
-  // Moved to Class Level so it compiles cleanly
   Widget _buildMicroStat(String label, String value, Color color) {
     return Column(
       children: [
@@ -122,11 +117,32 @@ class ProgressReportPage extends StatelessWidget {
   Widget _buildExerciseCard(ExerciseTelemetry ex) {
     final int totalVolume = ex.goodReps + ex.badReps;
     
-    // Find the exact point of failure (score drops below 0.6)
+    // --- 1. LOGIC FOR SUGGESTION #2: GOLDEN REP ---
+    int goldenRepIndex = -1;
+    double maxScore = -1.0;
+    if (!ex.isDuration && ex.repScores.isNotEmpty) {
+      for (int i = 0; i < ex.repScores.length; i++) {
+        if (ex.repScores[i] > maxScore) {
+          maxScore = ex.repScores[i];
+          goldenRepIndex = i + 1;
+        }
+      }
+    }
+
+    // --- 2. LOGIC FOR SUGGESTION #5: DYNAMIC FAULT SUMMARY ---
+    String faultAnalysis = "Form was stable. Maintain this intensity.";
+    if (ex.badReps > 0) {
+      final name = ex.name.toLowerCase();
+      if (name.contains("push")) faultAnalysis = "Primary issue: Hip sagging or incomplete lockout.";
+      else if (name.contains("squat")) faultAnalysis = "Primary issue: Insufficient depth or knee cave.";
+      else if (name.contains("plank")) faultAnalysis = "Primary issue: Core instability or pelvic tilt.";
+      else faultAnalysis = "Primary issue: Momentum usage or limited range of motion.";
+    }
+
     int? failurePoint;
     for (int i = 0; i < ex.repScores.length; i++) {
       if (ex.repScores[i] < 0.6) {
-        failurePoint = i + 1; // 1-indexed for the user
+        failurePoint = i + 1;
         break;
       }
     }
@@ -144,14 +160,11 @@ class ProgressReportPage extends StatelessWidget {
           iconColor: mintGreen,
           collapsedIconColor: Colors.grey,
           tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          
-          // --- COLLAPSED VIEW (Header) ---
           title: Text(ex.name.toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.0)),
-          subtitle: Text("Avg Score: ${ex.finalScore}", style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+          subtitle: Text("Avg Score: ${ex.finalScore}%", style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
           trailing: SizedBox(
             width: 60,
             height: 60,
-            // Uses RatioRingPainter for BOTH reps and duration so the text is correct
             child: CustomPaint(
               painter: RatioRingPainter(good: ex.goodReps, bad: ex.badReps),
               child: Center(
@@ -163,33 +176,55 @@ class ProgressReportPage extends StatelessWidget {
               ),
             ),
           ),
-          
-          // --- EXPANDED VIEW (Stats, Graph & Failure Point) ---
           children: [
+            // Micro Stats Row
             Padding(
               padding: const EdgeInsets.only(top: 8.0, bottom: 16.0, left: 16.0, right: 16.0),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildMicroStat(
-                    ex.isDuration ? "TOTAL TIME" : "TOTAL REPS", 
-                    ex.isDuration ? _formatTimeString(totalVolume) : totalVolume.toString(), 
-                    Colors.white
-                  ),
-                  _buildMicroStat(
-                    ex.isDuration ? "GOOD FORM" : "CLEAN REPS", 
-                    ex.isDuration ? _formatTimeString(ex.goodReps) : ex.goodReps.toString(), 
-                    mintGreen
-                  ),
-                  _buildMicroStat(
-                    ex.isDuration ? "BAD FORM" : "BAD REPS", 
-                    ex.isDuration ? _formatTimeString(ex.badReps) : ex.badReps.toString(), 
-                    neonRed
-                  ),
+                  _buildMicroStat(ex.isDuration ? "TOTAL TIME" : "TOTAL REPS", ex.isDuration ? _formatTimeString(totalVolume) : totalVolume.toString(), Colors.white),
+                  _buildMicroStat(ex.isDuration ? "GOOD FORM" : "CLEAN REPS", ex.isDuration ? _formatTimeString(ex.goodReps) : ex.goodReps.toString(), mintGreen),
+                  _buildMicroStat(ex.isDuration ? "BAD FORM" : "BAD REPS", ex.isDuration ? _formatTimeString(ex.badReps) : ex.badReps.toString(), neonRed),
                 ],
               ),
             ),
 
+            // --- NEW: AI ANALYSIS SECTION ---
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white10),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.analytics_outlined, color: mintGreen, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(faultAnalysis, style: const TextStyle(color: Colors.white70, fontSize: 11, fontStyle: FontStyle.italic))),
+                      ],
+                    ),
+                    if (goldenRepIndex != -1 && maxScore > 0.8) ...[
+                      const Padding(padding: EdgeInsets.symmetric(vertical: 4), child: Divider(color: Colors.white10)),
+                      Row(
+                        children: [
+                          const Icon(Icons.auto_awesome, color: Colors.amber, size: 18),
+                          const SizedBox(width: 8),
+                          Text("Golden Rep: #$goldenRepIndex (${(maxScore * 100).toInt()}%)", style: const TextStyle(color: Colors.amber, fontSize: 11, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ]
+                  ],
+                ),
+              ),
+            ),
+
+            // Graph Section
             if (ex.repScores.length > 1) ...[
               Padding(
                 padding: const EdgeInsets.only(bottom: 8.0, left: 16.0, right: 32.0),
@@ -228,7 +263,6 @@ class ProgressReportPage extends StatelessWidget {
                     children: [
                       const Icon(Icons.warning_amber_rounded, color: neonRed, size: 16),
                       const SizedBox(width: 8),
-                      // Dynamic text for Rep vs Second
                       Text("Form breakdown detected at ${ex.isDuration ? 'Second' : 'Rep'} $failurePoint", style: const TextStyle(color: neonRed, fontSize: 12, fontWeight: FontWeight.bold)),
                     ],
                   ),
@@ -236,7 +270,6 @@ class ProgressReportPage extends StatelessWidget {
               else 
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16.0),
-                  // Dynamic text for Set vs Duration
                   child: Text("Form maintained throughout ${ex.isDuration ? 'duration' : 'set'}.", style: const TextStyle(color: mintGreen, fontSize: 12, fontWeight: FontWeight.bold)),
                 ),
             ] else ...[
@@ -252,7 +285,6 @@ class ProgressReportPage extends StatelessWidget {
   }
 }
 
-// --- CUSTOM PAINTER FOR THE RED/GREEN RING ---
 class RatioRingPainter extends CustomPainter {
   final int good;
   final int bad;
