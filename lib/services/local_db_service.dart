@@ -254,4 +254,12 @@ class LocalDBService {
       AND workout_sessions.created_at >= date('now', '-$days days')
     ''');
   }
+  Future<List<Map<String, dynamic>>> getTelemetryForSession(String sessionId) async {
+    final db = await database;
+    return await db.query(
+      'exercise_telemetry', 
+      where: 'session_id = ?', 
+      whereArgs: [sessionId]
+    );
+  }
 }

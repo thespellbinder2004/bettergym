@@ -5,7 +5,8 @@ import 'package:fl_chart/fl_chart.dart';
 import '../main.dart'; 
 import 'session_setup_page.dart'; 
 import '../services/local_db_service.dart';
-// Note: Ensure you have your ProgressReportPage imported when you wire up the arrows later
+import 'progress_report_page.dart';
+import 'session_summary_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -16,7 +17,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   bool _isLoading = true;
-  bool _transportActive = false; // Gimmick state
+  bool _transportActive = false; 
   int _enduranceLookback = 7;
 
   Map<String, dynamic> _data = {};
@@ -30,9 +31,8 @@ class _DashboardPageState extends State<DashboardPage> {
     _loadDashboardData();
   }
 
-  // --- 1. COLOR SOP ---
   Color _getScoreColor(double score) {
-    if (score >= 100) return const Color(0xFF8B00FF); // Violet
+    if (score >= 100) return const Color(0xFF8B00FF); 
     if (score >= 75) return mintGreen;
     if (score >= 50) return Colors.yellow;
     if (score >= 25) return Colors.orange;
@@ -150,7 +150,6 @@ class _DashboardPageState extends State<DashboardPage> {
           padding: const EdgeInsets.all(16),
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
-            // --- GIMMICK: TRANSPORT LATEST ACTIVITY ---
             if (_transportActive && timeline.isNotEmpty) ...[
               _buildTimelineNode(timeline.first),
               const SizedBox(height: 24),
@@ -476,8 +475,49 @@ class _DashboardPageState extends State<DashboardPage> {
         title: Text(timeStr, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         subtitle: Text('Score Evaluated', style: const TextStyle(color: Colors.grey, fontSize: 12)),
         trailing: const Icon(Icons.chevron_right, color: Colors.white38, size: 24),
-        onTap: () {
-          // Future: Route to ProgressReportPage
+        onTap: () async {
+          // 1. Fetch the raw telemetry rows for this specific session
+          final rawTelemetry = await LocalDBService.instance.getTelemetryForSession(session['id']);
+
+          // 2. Reconstruct the ExerciseTelemetry objects from the database rows
+          List<ExerciseTelemetry> historicalData = rawTelemetry.map((row) {
+            
+            List<double> scores = [];
+            try {
+              scores = List<double>.from(jsonDecode(row['rep_scores_array']).map((e) => (e as num).toDouble()));
+            } catch (e) {
+              debugPrint("Error decoding historical array: $e");
+            }
+
+            bool isTimeBased = row['exercise_name'].toString().toLowerCase().contains('plank');
+
+            ExerciseTelemetry ex = ExerciseTelemetry(
+              name: row['exercise_name'],
+              target: row['good_reps'] + row['bad_reps'],
+              isDuration: isTimeBased, 
+            );
+            
+            ex.goodReps = row['good_reps'];
+            ex.badReps = row['bad_reps'];
+            ex.repScores = scores;
+            
+            return ex;
+          }).toList();
+
+          // 3. Ensure the widget is still on screen before navigating
+          if (!context.mounted) return;
+
+          // 4. Push to the Progress Report Page
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ProgressReportPage(
+                telemetryData: historicalData,
+                globalScore: session['global_score'],
+                totalDuration: Duration(seconds: session['duration_seconds']),
+              ),
+            ),
+          );
         },
       ),
     );
