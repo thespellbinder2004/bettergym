@@ -13,6 +13,7 @@ import 'package:uuid/uuid.dart';
 import '../main.dart';
 import '../services/hardware_service.dart';
 import 'session_setup_page.dart';
+import '../services/api_services.dart';
 
 enum AiSessionPhase {
   idle,
@@ -326,7 +327,27 @@ class _PoseCameraAiPageState extends State<PoseCameraAiPage>
         final fileName = '${_currentExerciseIndex + 1}_$safeExerciseName.mp4';
         final targetPath = p.join(_sessionDirectory!.path, fileName);
 
-        await File(recordedFile.path).copy(targetPath);
+        final savedFile = await File(recordedFile.path).copy(targetPath);
+
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final userId = prefs.getInt('user_id');
+
+          if (userId != null) {
+            final result = await ApiService.uploadExerciseVideo(
+              userId: userId,
+              sessionId: _sessionId,
+              exerciseName: _currentExercise!.name,
+              videoPath: savedFile.path,
+            );
+
+            debugPrint('UPLOAD SUCCESS: $result');
+          } else {
+            debugPrint('UPLOAD SKIPPED: user_id is null');
+          }
+        } catch (e) {
+          debugPrint('UPLOAD ERROR: $e');
+        }
       }
 
       if (_isLastExercise) {
