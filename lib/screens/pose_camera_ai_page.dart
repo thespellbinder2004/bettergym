@@ -56,6 +56,8 @@ class _PoseCameraAiPageState extends State<PoseCameraAiPage>
   Timer? _countdownTimer;
 
   bool _isRecording = false;
+  bool _isSaving = false;
+  String _savingText = 'Saving video...';
 
   late final String _sessionId;
   Directory? _sessionDirectory;
@@ -304,28 +306,43 @@ class _PoseCameraAiPageState extends State<PoseCameraAiPage>
   }
 
   Future<void> _finishCurrentExerciseAndContinue() async {
-    if (_cameraController == null || _currentExercise == null) return;
+    if (_cameraController == null || _currentExercise == null || _isSaving)
+      return;
+
+    final currentExercise = _currentExercise!;
+    final isLastExercise = _isLastExercise;
 
     try {
+      if (mounted) {
+        setState(() {
+          _isSaving = true;
+          _isRecording = false;
+          _savingText = isLastExercise
+              ? 'Saving final video...'
+              : 'Saving exercise video...';
+        });
+      }
+
       XFile? recordedFile;
 
       if (_cameraController!.value.isRecordingVideo) {
         recordedFile = await _cameraController!.stopVideoRecording();
       }
 
-      if (!mounted) return;
-      setState(() {
-        _isRecording = false;
-      });
-
       if (recordedFile != null && _sessionDirectory != null) {
-        final safeExerciseName = _currentExercise!.name
+        final safeExerciseName = currentExercise.name
             .toLowerCase()
             .replaceAll(' ', '_')
             .replaceAll(RegExp(r'[^a-z0-9_]'), '');
 
         final fileName = '${_currentExerciseIndex + 1}_$safeExerciseName.mp4';
         final targetPath = p.join(_sessionDirectory!.path, fileName);
+
+        if (mounted) {
+          setState(() {
+            _savingText = 'Saving video to device...';
+          });
+        }
 
         final savedFile = await File(recordedFile.path).copy(targetPath);
 
@@ -334,10 +351,16 @@ class _PoseCameraAiPageState extends State<PoseCameraAiPage>
           final userId = prefs.getInt('user_id');
 
           if (userId != null) {
+            if (mounted) {
+              setState(() {
+                _savingText = 'Uploading video...';
+              });
+            }
+
             final result = await ApiService.uploadExerciseVideo(
               userId: userId,
               sessionId: _sessionId,
-              exerciseName: _currentExercise!.name,
+              exerciseName: currentExercise.name,
               videoPath: savedFile.path,
             );
 
@@ -350,13 +373,25 @@ class _PoseCameraAiPageState extends State<PoseCameraAiPage>
         }
       }
 
-      if (_isLastExercise) {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+
+      if (isLastExercise) {
         await _finishSession();
       } else {
         await _startRestCountdown();
       }
     } catch (e) {
       debugPrint('Finish exercise error: $e');
+
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
     }
   }
 
@@ -631,6 +666,42 @@ class _PoseCameraAiPageState extends State<PoseCameraAiPage>
     );
   }
 
+  Widget _buildSavingOverlay() {
+    if (!_isSaving) return const SizedBox.shrink();
+
+    return Container(
+      color: Colors.black.withOpacity(0.82),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(color: mintGreen),
+            const SizedBox(height: 24),
+            Text(
+              _savingText,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Please wait...',
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 14,
+                letterSpacing: 1.1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTopOverlay(WorkoutSet currentExercise) {
     return SafeArea(
       child: Padding(
@@ -798,10 +869,10 @@ class _PoseCameraAiPageState extends State<PoseCameraAiPage>
             borderRadius: BorderRadius.circular(18),
           ),
         ),
-        onPressed: _finishCurrentExerciseAndContinue,
+        onPressed: _isSaving ? null : _finishCurrentExerciseAndContinue,
         icon: Icon(_isLastExercise ? Icons.check : Icons.skip_next),
         label: Text(
-          _isLastExercise ? 'FINISH' : 'NEXT',
+          _isSaving ? 'SAVING...' : (_isLastExercise ? 'FINISH' : 'NEXT'),
           style: const TextStyle(
             fontWeight: FontWeight.bold,
             letterSpacing: 1.2,
@@ -980,6 +1051,7 @@ class _PoseCameraAiPageState extends State<PoseCameraAiPage>
                   ),
                 ),
                 _buildTransitionOverlay(),
+                _buildSavingOverlay(),
                 if (_phase == AiSessionPhase.recording &&
                     currentExercise != null) ...[
                   _buildTopOverlay(currentExercise),

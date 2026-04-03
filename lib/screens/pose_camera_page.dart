@@ -6,18 +6,18 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
-import 'package:permission_handler/permission_handler.dart'; 
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-import 'package:uuid/uuid.dart'; 
+import 'package:uuid/uuid.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../main.dart';
-import '../services/audio_service.dart'; 
-import '../services/hardware_service.dart'; 
+import '../services/audio_service.dart';
+import '../services/hardware_service.dart';
 import '../services/biomechanics_engine.dart';
-import '../services/local_db_service.dart'; 
-import '../services/api_services.dart'; 
+import '../services/local_db_service.dart';
+import '../services/api_services.dart';
 import 'session_setup_page.dart';
 import 'session_summary_page.dart';
 import '../state/frame_controller.dart'; // THE NEW ARCHITECTURE INJECTION
@@ -28,15 +28,16 @@ class PoseCameraPage extends ConsumerStatefulWidget {
   final List<WorkoutSet> routine;
 
   const PoseCameraPage({super.key, required this.routine});
-  
+
   @override
   ConsumerState<PoseCameraPage> createState() => _PoseCameraPageState();
 }
 
-class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBindingObserver {
+class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
+    with WidgetsBindingObserver {
   CameraController? _cameraController;
   late final PoseDetector _poseDetector;
-  
+
   bool _isCheckingPermission = true;
   bool _hasCameraPermission = false;
 
@@ -45,35 +46,36 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
   bool _isFrontCamera = false;
 
   InputImageRotation _rotation = InputImageRotation.rotation0deg;
-  final ValueNotifier<PoseOverlayData?> _overlayNotifier = ValueNotifier<PoseOverlayData?>(null);
+  final ValueNotifier<PoseOverlayData?> _overlayNotifier =
+      ValueNotifier<PoseOverlayData?>(null);
   DateTime _lastProcessed = DateTime.fromMillisecondsSinceEpoch(0);
   static const int _processIntervalMs = 30;
 
   SessionPhase _currentPhase = SessionPhase.acquisition;
-  SessionPhase? _previousPhase; 
-  
+  SessionPhase? _previousPhase;
+
   int _currentExerciseIndex = 0;
   int _prepTimeSetting = 10;
   int _restTimeSetting = 30;
-  int _countdownSeconds = 0;
+  int _countdownSeconds = 12;
   Timer? _phaseTimer;
 
   int _repsOrSecondsRemaining = 0;
   int _badRepsSessionCount = 0;
-  
+
   bool _showToast = false;
   Timer? _toastTimer;
 
   int _exitCountdown = 4;
   Timer? _exitTimer;
-  
-  int _previousFormState = 1; 
-  List<int> _formBreakSeconds = []; 
+
+  int _previousFormState = 1;
+  List<int> _formBreakSeconds = [];
 
   late List<ExerciseTelemetry> _sessionTelemetry;
   DateTime? _sessionStartTime;
   late final String _currentSessionId;
-  
+
   double _currentRepScoreAccumulator = 0.0;
   int _currentRepFrameCount = 0;
 
@@ -83,11 +85,12 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
     _currentSessionId = const Uuid().v4();
     WidgetsBinding.instance.addObserver(this);
     _poseDetector = PoseDetector(
-      options: PoseDetectorOptions(mode: PoseDetectionMode.stream, model: PoseDetectionModel.accurate),
+      options: PoseDetectorOptions(
+          mode: PoseDetectionMode.stream, model: PoseDetectionModel.accurate),
     );
-    
+
     _verifyPermissionsAndBoot();
-    _unlockOrientation(); 
+    _unlockOrientation();
   }
 
   void _lockOrientation() {
@@ -131,27 +134,28 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
 
   Future<void> _loadSettingsAndStart() async {
     final prefs = await SharedPreferences.getInstance();
-    await AudioService.instance.loadSettings(); 
+    await AudioService.instance.loadSettings();
 
     setState(() {
       _prepTimeSetting = prefs.getInt('prep_time') ?? 10;
       _restTimeSetting = prefs.getInt('rest_time') ?? 30;
-      
-      _sessionTelemetry = widget.routine.map((ex) => 
-        ExerciseTelemetry(name: ex.name, isDuration: ex.isDuration, target: ex.target)
-      ).toList();
+
+      _sessionTelemetry = widget.routine
+          .map((ex) => ExerciseTelemetry(
+              name: ex.name, isDuration: ex.isDuration, target: ex.target))
+          .toList();
     });
 
     if (widget.routine.isNotEmpty) {
-      _sessionStartTime = DateTime.now(); 
+      _sessionStartTime = DateTime.now();
       await LocalDBService.instance.createSessionRecord({
         'id': _currentSessionId,
-        'user_id': prefs.getInt('user_id') ?? 1, 
-        'routine_id': null, 
+        'user_id': prefs.getInt('user_id') ?? 1,
+        'routine_id': null,
         'status': 'IN_PROGRESS',
         'global_score': 0,
         'duration_seconds': 0,
-        'sync_status': 0, 
+        'sync_status': 0,
       });
 
       _startAcquisitionPhase();
@@ -161,13 +165,14 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
   }
 
   void _pauseSession() {
-    if (_currentPhase == SessionPhase.paused || _currentPhase == SessionPhase.finished) return;
+    if (_currentPhase == SessionPhase.paused ||
+        _currentPhase == SessionPhase.finished) return;
 
     _phaseTimer?.cancel();
     _toastTimer?.cancel();
     _exitTimer?.cancel();
 
-    AudioService.instance.playPauseSound(); 
+    AudioService.instance.playPauseSound();
 
     setState(() {
       _previousPhase = _currentPhase;
@@ -178,7 +183,7 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
   void _resumeSession() {
     if (_currentPhase != SessionPhase.paused || _previousPhase == null) return;
 
-    AudioService.instance.playResumeSound(); 
+    AudioService.instance.playResumeSound();
 
     setState(() {
       _currentPhase = _previousPhase!;
@@ -194,38 +199,41 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
     } else if (_currentPhase == SessionPhase.active) {
       if (widget.routine[_currentExerciseIndex].isDuration) {
         _runCountdown(() => _completeExercise());
-      } 
+      }
     }
   }
 
   void _startAcquisitionPhase() {
-    _unlockOrientation(); 
+    _unlockOrientation();
     setState(() {
       _currentPhase = SessionPhase.acquisition;
-      _countdownSeconds = 5; 
+      _countdownSeconds = 5;
     });
     _triggerToast("Calibrating tracker...", 0);
-    _runCountdown(() => _startPrepPhase()); 
+    _runCountdown(() => _startPrepPhase());
   }
 
   void _startPrepPhase() {
-    _lockOrientation(); 
-    
-    final currentExerciseName = widget.routine.isNotEmpty ? widget.routine[_currentExerciseIndex].name : "the exercise";
+    _lockOrientation();
+
+    final currentExerciseName = widget.routine.isNotEmpty
+        ? widget.routine[_currentExerciseIndex].name
+        : "the exercise";
     final nameLower = currentExerciseName.toLowerCase();
-    
-    final isHorizontal = nameLower.contains("push") || nameLower.contains("plank");
+
+    final isHorizontal =
+        nameLower.contains("push") || nameLower.contains("plank");
     final isSquat = nameLower.contains("squat");
     final isLunge = nameLower.contains("lunge");
-    final isVertical = !isHorizontal && !isSquat && !isLunge; 
+    final isVertical = !isHorizontal && !isSquat && !isLunge;
 
     setState(() {
       _currentPhase = SessionPhase.prep;
       _countdownSeconds = _prepTimeSetting;
     });
-    
+
     _triggerToast("Get Ready.", 0);
-    
+
     if (_prepTimeSetting >= 20) {
       if (isHorizontal) {
         AudioService.instance.speakPriority([
@@ -245,37 +253,38 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
         ]);
       }
     }
-    
+
     _runCountdown(() => _startActivePhase());
   }
 
   void _startRestPhase() {
     BiomechanicsEngine.instance.reset();
-    _unlockOrientation(); 
+    _unlockOrientation();
 
     setState(() {
       _currentPhase = SessionPhase.rest;
       _countdownSeconds = _restTimeSetting;
     });
-    
+
     final nextExerciseName = widget.routine[_currentExerciseIndex].name;
     final nameLower = nextExerciseName.toLowerCase();
-    
-    final isHorizontal = nameLower.contains("push") || nameLower.contains("plank");
+
+    final isHorizontal =
+        nameLower.contains("push") || nameLower.contains("plank");
     final orientationTip = isHorizontal ? "landscape" : "portrait";
 
     _triggerToast("Rest. Next: $nextExerciseName", 0);
-    
+
     AudioService.instance.speakPriority([
       "Set complete. Rest up. We have $nextExerciseName next. Tip: $orientationTip orientation works best for tracking this.",
     ]);
 
     _runCountdown(() => _startActivePhase());
   }
-  
+
   void _startActivePhase() {
     BiomechanicsEngine.instance.reset();
-    _lockOrientation(); 
+    _lockOrientation();
     _previousFormState = 1;
     _formBreakSeconds = [];
 
@@ -289,7 +298,7 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
 
     if (currentExercise.isDuration) {
       _runCountdown(() => _completeExercise());
-    } 
+    }
   }
 
   void _completeExercise() async {
@@ -308,11 +317,11 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
     }
 
     if (_currentExerciseIndex < widget.routine.length - 1) {
-      setState(() => _currentExerciseIndex++); 
+      setState(() => _currentExerciseIndex++);
       _startRestPhase();
     } else {
       setState(() => _currentPhase = SessionPhase.finished);
-      AudioService.instance.playFinishSound(); 
+      AudioService.instance.playFinishSound();
       _exitSession(isCompleted: true);
     }
   }
@@ -320,8 +329,11 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
   void _runCountdown(VoidCallback onComplete) {
     _phaseTimer?.cancel();
     _phaseTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted || _currentPhase == SessionPhase.paused) { timer.cancel(); return; }
-      
+      if (!mounted || _currentPhase == SessionPhase.paused) {
+        timer.cancel();
+        return;
+      }
+
       // READ DATA SYNCHRONOUSLY FROM RIVERPOD FOR THE TIMER LOGIC
       final frameData = ref.read(frameProvider);
 
@@ -331,26 +343,29 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
             _countdownSeconds--;
             if (_countdownSeconds <= 0) {
               timer.cancel();
-              onComplete(); 
+              onComplete();
             }
           } else {
-            _countdownSeconds = 5; 
+            _countdownSeconds = 5;
           }
-          return; 
+          return;
         }
 
-        if (_currentPhase == SessionPhase.active && widget.routine[_currentExerciseIndex].isDuration) {
-          if (frameData.formState != -1) { 
+        if (_currentPhase == SessionPhase.active &&
+            widget.routine[_currentExerciseIndex].isDuration) {
+          if (frameData.formState != -1) {
             _repsOrSecondsRemaining--;
-            
-            _sessionTelemetry[_currentExerciseIndex].repScores.add(frameData.formScore);
+
+            _sessionTelemetry[_currentExerciseIndex]
+                .repScores
+                .add(frameData.formScore);
             _sessionTelemetry[_currentExerciseIndex].goodReps++;
 
-            AudioService.instance.playTick(); 
+            AudioService.instance.playTick();
 
             if (_repsOrSecondsRemaining <= 0) {
               timer.cancel();
-              AudioService.instance.playChime(); 
+              AudioService.instance.playChime();
               _completeExercise();
             }
           } else {
@@ -359,8 +374,9 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
           }
         } else {
           _countdownSeconds--;
-          
-          if ((_currentPhase == SessionPhase.prep || _currentPhase == SessionPhase.rest)) {
+
+          if ((_currentPhase == SessionPhase.prep ||
+              _currentPhase == SessionPhase.rest)) {
             if (_countdownSeconds <= 3 && _countdownSeconds > 0) {
               AudioService.instance.playLeadInBeep();
             } else if (_countdownSeconds == 0) {
@@ -380,18 +396,20 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
   void _triggerToast(String message, int state) {
     _toastTimer?.cancel();
     if (!mounted) return;
-    setState(() { _showToast = true; });
-    
+    setState(() {
+      _showToast = true;
+    });
+
     // Push the forced feedback to Riverpod instead of local setState
     ref.read(frameProvider.notifier).forceFeedback(message, state);
-    
+
     _toastTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) setState(() => _showToast = false);
     });
   }
 
   void _handleTapDown(TapDownDetails details) {
-    if (_currentPhase == SessionPhase.paused) return; 
+    if (_currentPhase == SessionPhase.paused) return;
     _exitCountdown = 4;
     _triggerToast("Hold for $_exitCountdown seconds to end session", -1);
     _exitTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -399,7 +417,7 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
         _exitCountdown--;
         if (_exitCountdown <= 0) {
           timer.cancel();
-          AudioService.instance.playAbortSound(); 
+          AudioService.instance.playAbortSound();
           _exitSession(isCompleted: false);
         } else {
           _triggerToast("Hold for $_exitCountdown seconds to end session", -1);
@@ -420,18 +438,27 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
       final availableCams = HardwareService.instance.cameras;
       if (availableCams.isEmpty) throw Exception('No cameras found.');
 
-      final camera = availableCams.firstWhere((c) => c.lensDirection == CameraLensDirection.front, orElse: () => availableCams.first);
+      final camera = availableCams.firstWhere(
+          (c) => c.lensDirection == CameraLensDirection.front,
+          orElse: () => availableCams.first);
       _isFrontCamera = camera.lensDirection == CameraLensDirection.front;
       final controller = CameraController(
-        camera, ResolutionPreset.high, enableAudio: false, fps: 30,
-        imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
+        camera,
+        ResolutionPreset.high,
+        enableAudio: false,
+        fps: 30,
+        imageFormatGroup: Platform.isAndroid
+            ? ImageFormatGroup.nv21
+            : ImageFormatGroup.bgra8888,
       );
 
       await controller.initialize();
-      _rotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation) ?? InputImageRotation.rotation0deg;
+      _rotation =
+          InputImageRotationValue.fromRawValue(camera.sensorOrientation) ??
+              InputImageRotation.rotation0deg;
       await controller.startImageStream(_processCameraImage);
-      
-      WakelockPlus.enable(); 
+
+      WakelockPlus.enable();
 
       if (!mounted) return;
       setState(() {
@@ -445,8 +472,11 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
 
   Future<void> _processCameraImage(CameraImage image) async {
     final now = DateTime.now();
-    if (_isProcessing || _currentPhase == SessionPhase.paused || now.difference(_lastProcessed).inMilliseconds < _processIntervalMs) return;
-    
+    if (_isProcessing ||
+        _currentPhase == SessionPhase.paused ||
+        now.difference(_lastProcessed).inMilliseconds < _processIntervalMs)
+      return;
+
     _isProcessing = true;
     _lastProcessed = now;
 
@@ -464,7 +494,8 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
         final rightAnkle = landmarks[PoseLandmarkType.rightAnkle];
 
         if (nose != null && (leftAnkle != null || rightAnkle != null)) {
-          if (nose.likelihood > 0.5 && (leftAnkle!.likelihood > 0.5 || rightAnkle!.likelihood > 0.5)) {
+          if (nose.likelihood > 0.5 &&
+              (leftAnkle!.likelihood > 0.5 || rightAnkle!.likelihood > 0.5)) {
             targetLocked = true;
           }
         }
@@ -476,18 +507,19 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
       Set<PoseLandmarkType> currentFaultyJoints = {};
       Set<PoseLandmarkType> activeJointsToRender = {};
 
-      if (targetLocked && _currentPhase == SessionPhase.active && widget.routine.isNotEmpty) {
+      if (targetLocked &&
+          _currentPhase == SessionPhase.active &&
+          widget.routine.isNotEmpty) {
         final currentExercise = widget.routine[_currentExerciseIndex];
-        
+
         final analysis = BiomechanicsEngine.instance.processFrame(
-          pose: poses.first, 
-          exerciseName: currentExercise.name
-        );
+            pose: poses.first, exerciseName: currentExercise.name);
 
         // --- THE DECOUPLED AUDIO TRIGGER ---
         // We check if the math engine requested audio. If yes, the UI handles the hardware.
         if (analysis['audioCue'] != null) {
-          AudioService.instance.speakCorrection(analysis['audioCue'] as List<String>);
+          AudioService.instance
+              .speakCorrection(analysis['audioCue'] as List<String>);
         }
         // -----------------------------------
 
@@ -501,7 +533,7 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
         if (_previousFormState == 1 && currentFormState == -1) {
           if (currentExercise.isDuration) {
             _formBreakSeconds.add(_repsOrSecondsRemaining);
-            _badRepsSessionCount++; 
+            _badRepsSessionCount++;
           }
         }
         _previousFormState = currentFormState;
@@ -511,22 +543,27 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
           _currentRepFrameCount++;
 
           if (analysis['goodRepTriggered'] == true) {
-            setState(() { _repsOrSecondsRemaining--; });
-            
-            double averageRepScore = _currentRepFrameCount > 0 ? (_currentRepScoreAccumulator / _currentRepFrameCount) : 1.0;
-            _sessionTelemetry[_currentExerciseIndex].repScores.add(averageRepScore);
+            setState(() {
+              _repsOrSecondsRemaining--;
+            });
+
+            double averageRepScore = _currentRepFrameCount > 0
+                ? (_currentRepScoreAccumulator / _currentRepFrameCount)
+                : 1.0;
+            _sessionTelemetry[_currentExerciseIndex]
+                .repScores
+                .add(averageRepScore);
             _sessionTelemetry[_currentExerciseIndex].goodReps++;
-            
+
             _currentRepScoreAccumulator = 0.0;
             _currentRepFrameCount = 0;
 
             AudioService.instance.playChime();
             if (_repsOrSecondsRemaining <= 0) _completeExercise();
-            
           } else if (analysis['badRepTriggered'] == true) {
             _sessionTelemetry[_currentExerciseIndex].repScores.add(0.0);
             _sessionTelemetry[_currentExerciseIndex].badReps++;
-            
+
             _currentRepScoreAccumulator = 0.0;
             _currentRepFrameCount = 0;
 
@@ -538,14 +575,15 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
 
       // ARCHITECTURAL SHIFT: We no longer call setState() here. We push to Riverpod.
       ref.read(frameProvider.notifier).updateFrameData(
-        isUserInFrame: targetLocked,
-        formState: currentFormState,
-        feedbackMessage: currentFeedback,
-        formScore: currentFormScore,
-        faultyJoints: currentFaultyJoints,
-      );
-      
-      final isDevicePortrait = MediaQuery.of(context).orientation == Orientation.portrait;
+            isUserInFrame: targetLocked,
+            formState: currentFormState,
+            feedbackMessage: currentFeedback,
+            formScore: currentFormScore,
+            faultyJoints: currentFaultyJoints,
+          );
+
+      final isDevicePortrait =
+          MediaQuery.of(context).orientation == Orientation.portrait;
 
       _overlayNotifier.value = PoseOverlayData(
         poses: poses,
@@ -554,8 +592,8 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
         isFrontCamera: _isFrontCamera,
         formState: currentFormState,
         isDevicePortrait: isDevicePortrait,
-        activeJoints: activeJointsToRender, 
-        faultyJoints: currentFaultyJoints, 
+        activeJoints: activeJointsToRender,
+        faultyJoints: currentFaultyJoints,
       );
     } catch (e) {
       debugPrint('POSE ERROR: $e');
@@ -572,14 +610,18 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
       bytes: bytes,
       metadata: InputImageMetadata(
         size: Size(image.width.toDouble(), image.height.toDouble()),
-        rotation: _rotation, format: format, bytesPerRow: image.planes.first.bytesPerRow,
+        rotation: _rotation,
+        format: format,
+        bytesPerRow: image.planes.first.bytesPerRow,
       ),
     );
   }
 
   Uint8List _concatenatePlanes(List<Plane> planes) {
     final WriteBuffer allBytes = WriteBuffer();
-    for (final plane in planes) { allBytes.putUint8List(plane.bytes); }
+    for (final plane in planes) {
+      allBytes.putUint8List(plane.bytes);
+    }
     return allBytes.done().buffer.asUint8List();
   }
 
@@ -587,24 +629,24 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
     _phaseTimer?.cancel();
     _toastTimer?.cancel();
     _exitTimer?.cancel();
-    
-    WakelockPlus.disable(); 
+
+    WakelockPlus.disable();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-    
+
     Duration finalDuration = const Duration(seconds: 0);
     if (_sessionStartTime != null) {
       finalDuration = DateTime.now().difference(_sessionStartTime!);
     }
-    
+
     Navigator.pushReplacement(
-      context, 
-      MaterialPageRoute(builder: (_) => SessionSummaryPage(
-        sessionId: _currentSessionId, 
-        isCompleted: isCompleted,
-        telemetryData: _sessionTelemetry,
-        totalDuration: finalDuration,
-      )) 
-    );
+        context,
+        MaterialPageRoute(
+            builder: (_) => SessionSummaryPage(
+                  sessionId: _currentSessionId,
+                  isCompleted: isCompleted,
+                  telemetryData: _sessionTelemetry,
+                  totalDuration: finalDuration,
+                )));
   }
 
   @override
@@ -612,8 +654,8 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
     _phaseTimer?.cancel();
     _toastTimer?.cancel();
     _exitTimer?.cancel();
-    
-    WakelockPlus.disable(); 
+
+    WakelockPlus.disable();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     WidgetsBinding.instance.removeObserver(this);
     _cameraController?.dispose();
@@ -625,11 +667,14 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
   double _calculateScale(BuildContext context, double previewRatio) {
     final size = MediaQuery.of(context).size;
     final screenRatio = size.width / size.height;
-    return screenRatio > previewRatio ? screenRatio / previewRatio : previewRatio / screenRatio;
+    return screenRatio > previewRatio
+        ? screenRatio / previewRatio
+        : previewRatio / screenRatio;
   }
 
   Widget _buildTransitionOverlay(FrameState frameData) {
-    if (_currentPhase == SessionPhase.active || _currentPhase == SessionPhase.finished) return const SizedBox.shrink();
+    if (_currentPhase == SessionPhase.active ||
+        _currentPhase == SessionPhase.finished) return const SizedBox.shrink();
 
     if (_currentPhase == SessionPhase.paused) {
       return Container(
@@ -638,28 +683,42 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.pause_circle_outline, color: mintGreen, size: 80),
+              const Icon(Icons.pause_circle_outline,
+                  color: mintGreen, size: 80),
               const SizedBox(height: 16),
-              const Text("SESSION PAUSED", style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: 4.0)),
+              const Text("SESSION PAUSED",
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 4.0)),
               const SizedBox(height: 48),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: mintGreen,
                   foregroundColor: navyBlue,
-                  padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30)),
                 ),
                 icon: const Icon(Icons.play_arrow, size: 28),
-                label: const Text("RESUME", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2.0)),
+                label: const Text("RESUME",
+                    style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 2.0)),
                 onPressed: _resumeSession,
               ),
               const SizedBox(height: 32),
               TextButton(
                 onPressed: () {
-                  AudioService.instance.playAbortSound(); 
+                  AudioService.instance.playAbortSound();
                   _exitSession(isCompleted: false);
                 },
-                child: const Text("END SESSION EARLY", style: TextStyle(color: neonRed, fontSize: 14, letterSpacing: 1.5)),
+                child: const Text("END SESSION EARLY",
+                    style: TextStyle(
+                        color: neonRed, fontSize: 14, letterSpacing: 1.5)),
               )
             ],
           ),
@@ -669,24 +728,26 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
 
     final isAcquisition = _currentPhase == SessionPhase.acquisition;
     final isPrep = _currentPhase == SessionPhase.prep;
-    
+
     String nextExerciseName = "";
     if ((isAcquisition || isPrep) && widget.routine.isNotEmpty) {
       nextExerciseName = widget.routine[_currentExerciseIndex].name;
-    } else if (_currentPhase == SessionPhase.rest && _currentExerciseIndex < widget.routine.length) {
+    } else if (_currentPhase == SessionPhase.rest &&
+        _currentExerciseIndex < widget.routine.length) {
       nextExerciseName = widget.routine[_currentExerciseIndex].name;
     }
 
-    final displayStatus = isAcquisition 
-        ? (frameData.isUserInFrame ? 'LOCK SECURED' : 'TARGET LOST') 
+    final displayStatus = isAcquisition
+        ? (frameData.isUserInFrame ? 'LOCK SECURED' : 'TARGET LOST')
         : (isPrep ? 'PREPARING' : 'REST');
-        
-    final statusColor = isAcquisition 
-        ? (frameData.isUserInFrame ? mintGreen : neonRed) 
+
+    final statusColor = isAcquisition
+        ? (frameData.isUserInFrame ? mintGreen : neonRed)
         : mintGreen;
 
     return Container(
-      color: Colors.black.withOpacity(isAcquisition && !frameData.isUserInFrame ? 0.8 : 0.7),
+      color: Colors.black
+          .withOpacity(isAcquisition && !frameData.isUserInFrame ? 0.8 : 0.7),
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -703,44 +764,58 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
                 ),
                 child: Center(
                   child: Icon(
-                    frameData.isUserInFrame ? Icons.center_focus_strong : Icons.person_search,
+                    frameData.isUserInFrame
+                        ? Icons.center_focus_strong
+                        : Icons.person_search,
                     color: statusColor,
                     size: 48,
                   ),
                 ),
               ),
-
             Text(displayStatus,
-                style: TextStyle(color: statusColor, fontSize: 18, letterSpacing: 4.0, fontWeight: FontWeight.bold)),
-            
+                style: TextStyle(
+                    color: statusColor,
+                    fontSize: 18,
+                    letterSpacing: 4.0,
+                    fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
-            
             if (isAcquisition && !frameData.isUserInFrame)
-              const Text("STEP BACK\nFULL BODY REQUIRED", 
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, height: 1.2))
+              const Text("STEP BACK\nFULL BODY REQUIRED",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      height: 1.2))
             else if (isAcquisition && frameData.isUserInFrame)
-              Text("HOLD POSITION: $_countdownSeconds", 
-                style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold))
+              Text("HOLD POSITION: $_countdownSeconds",
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold))
             else
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
                 transitionBuilder: (Widget child, Animation<double> animation) {
                   return SlideTransition(
-                    position: Tween<Offset>(begin: const Offset(0.0, -0.2), end: Offset.zero).animate(animation),
+                    position: Tween<Offset>(
+                            begin: const Offset(0.0, -0.2), end: Offset.zero)
+                        .animate(animation),
                     child: FadeTransition(opacity: animation, child: child),
                   );
                 },
-                child: Text(
-                  _countdownSeconds.toString(),
-                  key: ValueKey<int>(_countdownSeconds),
-                  style: const TextStyle(color: Colors.white, fontSize: 120, fontWeight: FontWeight.bold, height: 1.0)
-                ),
+                child: Text(_countdownSeconds.toString(),
+                    key: ValueKey<int>(_countdownSeconds),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 120,
+                        fontWeight: FontWeight.bold,
+                        height: 1.0)),
               ),
-              
             const SizedBox(height: 24),
             Text('NEXT: ${nextExerciseName.toUpperCase()}',
-                style: const TextStyle(color: Colors.grey, fontSize: 16, letterSpacing: 1.5)),
+                style: const TextStyle(
+                    color: Colors.grey, fontSize: 16, letterSpacing: 1.5)),
           ],
         ),
       ),
@@ -751,233 +826,311 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage> with WidgetsBin
   Widget build(BuildContext context) {
     if (_isCheckingPermission) {
       return const Scaffold(
-        backgroundColor: Colors.black, 
-        body: Center(child: CircularProgressIndicator(color: mintGreen))
-      );
+          backgroundColor: Colors.black,
+          body: Center(child: CircularProgressIndicator(color: mintGreen)));
     }
 
     if (!_hasCameraPermission) {
       return Scaffold(
         backgroundColor: Colors.black,
         appBar: AppBar(
-          backgroundColor: Colors.transparent, elevation: 0, 
-          leading: IconButton(
-            icon: const Icon(Icons.close, color: Colors.white), 
-            onPressed: () {
-              SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-              Navigator.pop(context); 
-            }
-          )
-        ),
-        body: Center(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 32), child: Text("Camera Access Required", style: TextStyle(color: Colors.white, fontSize: 24)))),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () {
+                  SystemChrome.setPreferredOrientations(
+                      [DeviceOrientation.portraitUp]);
+                  Navigator.pop(context);
+                })),
+        body: Center(
+            child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Text("Camera Access Required",
+                    style: TextStyle(color: Colors.white, fontSize: 24)))),
       );
     }
 
     if (!_isInitialized || _cameraController == null) {
-      return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: mintGreen)));
+      return const Scaffold(
+          backgroundColor: Colors.black,
+          body: Center(child: CircularProgressIndicator(color: mintGreen)));
     }
 
     // THE UI LISTENS TO RIVERPOD HERE
     final frameData = ref.watch(frameProvider);
 
-    return OrientationBuilder(
-      builder: (context, orientation) {
-        final isPortrait = orientation == Orientation.portrait;
-        final rawRatio = _cameraController!.value.aspectRatio;
-        final previewRatio = isPortrait ? 1 / rawRatio : rawRatio;
-        final scale = _calculateScale(context, previewRatio);
-        final currentExercise = widget.routine.isNotEmpty ? widget.routine[_currentExerciseIndex] : null;
+    return OrientationBuilder(builder: (context, orientation) {
+      final isPortrait = orientation == Orientation.portrait;
+      final rawRatio = _cameraController!.value.aspectRatio;
+      final previewRatio = isPortrait ? 1 / rawRatio : rawRatio;
+      final scale = _calculateScale(context, previewRatio);
+      final currentExercise = widget.routine.isNotEmpty
+          ? widget.routine[_currentExerciseIndex]
+          : null;
 
-        return PopScope(
-          canPop: false, 
-          onPopInvokedWithResult: (didPop, result) async {
-            if (didPop) return;
-            _pauseSession();
-            // Alert dialog logic omitted for brevity, you can keep yours exactly the same
-          },
-          child: Scaffold(
-            backgroundColor: Colors.black,
-            body: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTapDown: _handleTapDown,
-              onTapUp: (_) => _handleTapCancel(),
-              onTapCancel: _handleTapCancel,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Transform.scale(
-                    scale: scale,
-                    child: Center(
-                      child: AspectRatio(
-                        aspectRatio: previewRatio,
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            CameraPreview(_cameraController!),
-                            ValueListenableBuilder<PoseOverlayData?>(
-                              valueListenable: _overlayNotifier,
-                              builder: (context, overlay, child) {
-                                if (overlay == null || _currentPhase == SessionPhase.paused) return const SizedBox.shrink();
-                                return RepaintBoundary(
-                                  child: CustomPaint(
-                                    painter: PosePainter(
-                                      poses: overlay.poses,
-                                      imageSize: overlay.imageSize,
-                                      rotation: overlay.rotation,
-                                      isFrontCamera: overlay.isFrontCamera,
-                                      formState: overlay.formState,
-                                      isDevicePortrait: isPortrait,
-                                      activeJoints: overlay.activeJoints, 
-                                      faultyJoints: overlay.faultyJoints, 
-                                    ),
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          _pauseSession();
+          // Alert dialog logic omitted for brevity, you can keep yours exactly the same
+        },
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: _handleTapDown,
+            onTapUp: (_) => _handleTapCancel(),
+            onTapCancel: _handleTapCancel,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Transform.scale(
+                  scale: scale,
+                  child: Center(
+                    child: AspectRatio(
+                      aspectRatio: previewRatio,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          CameraPreview(_cameraController!),
+                          ValueListenableBuilder<PoseOverlayData?>(
+                            valueListenable: _overlayNotifier,
+                            builder: (context, overlay, child) {
+                              if (overlay == null ||
+                                  _currentPhase == SessionPhase.paused)
+                                return const SizedBox.shrink();
+                              return RepaintBoundary(
+                                child: CustomPaint(
+                                  painter: PosePainter(
+                                    poses: overlay.poses,
+                                    imageSize: overlay.imageSize,
+                                    rotation: overlay.rotation,
+                                    isFrontCamera: overlay.isFrontCamera,
+                                    formState: overlay.formState,
+                                    isDevicePortrait: isPortrait,
+                                    activeJoints: overlay.activeJoints,
+                                    faultyJoints: overlay.faultyJoints,
                                   ),
-                                );
-                              },
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                _buildTransitionOverlay(frameData),
+                if (_currentPhase != SessionPhase.paused)
+                  SafeArea(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 16.0),
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_currentPhase == SessionPhase.active &&
+                                currentExercise != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 24, vertical: 8),
+                                decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.6),
+                                    borderRadius: BorderRadius.circular(20)),
+                                child: Text(
+                                  currentExercise.name.toUpperCase(),
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 2.0),
+                                ),
+                              ),
+                            const SizedBox(height: 12),
+                            AnimatedOpacity(
+                              opacity: _showToast ? 1.0 : 0.0,
+                              duration: const Duration(milliseconds: 300),
+                              child: Container(
+                                margin:
+                                    const EdgeInsets.symmetric(horizontal: 20),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: darkSlate.withOpacity(0.9),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                      color: frameData.formState == -1
+                                          ? neonRed
+                                          : (frameData.formState == 1
+                                              ? mintGreen
+                                              : Colors.transparent),
+                                      width: 2),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      frameData.formState == -1
+                                          ? Icons.warning_amber_rounded
+                                          : (frameData.formState == 1
+                                              ? Icons.check_circle
+                                              : Icons.info_outline),
+                                      color: frameData.formState == -1
+                                          ? neonRed
+                                          : (frameData.formState == 1
+                                              ? mintGreen
+                                              : Colors.white),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Flexible(
+                                        child: Text(frameData.feedbackMessage,
+                                            style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold))),
+                                  ],
+                                ),
+                              ),
                             ),
                           ],
                         ),
                       ),
                     ),
                   ),
-
-                  _buildTransitionOverlay(frameData),
-
-                  if (_currentPhase != SessionPhase.paused)
-                    SafeArea(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 16.0),
-                        child: Align(
-                          alignment: Alignment.topCenter,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_currentPhase == SessionPhase.active && currentExercise != null)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(20)),
-                                  child: Text(
-                                    currentExercise.name.toUpperCase(),
-                                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2.0),
-                                  ),
-                                ),
-                              const SizedBox(height: 12),
-                              AnimatedOpacity(
-                                opacity: _showToast ? 1.0 : 0.0,
-                                duration: const Duration(milliseconds: 300),
-                                child: Container(
-                                  margin: const EdgeInsets.symmetric(horizontal: 20),
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                  decoration: BoxDecoration(
-                                    color: darkSlate.withOpacity(0.9),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                        color: frameData.formState == -1 ? neonRed : (frameData.formState == 1 ? mintGreen : Colors.transparent),
-                                        width: 2),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        frameData.formState == -1 ? Icons.warning_amber_rounded : (frameData.formState == 1 ? Icons.check_circle : Icons.info_outline),
-                                        color: frameData.formState == -1 ? neonRed : (frameData.formState == 1 ? mintGreen : Colors.white),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Flexible(child: Text(frameData.feedbackMessage, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                  if (_currentPhase != SessionPhase.paused && _currentPhase != SessionPhase.acquisition)
-                    Positioned(
-                      top: isPortrait ? 60 : 20, right: 20,
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: _pauseSession,
-                          borderRadius: BorderRadius.circular(30),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), shape: BoxShape.circle, border: Border.all(color: mintGreen.withOpacity(0.5), width: 2)),
-                            child: const Icon(Icons.pause, color: mintGreen, size: 28),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                  if (_currentPhase == SessionPhase.active && currentExercise != null && _currentPhase != SessionPhase.paused)
-                    Positioned(
-                      right: 20,
-                      top: isPortrait ? MediaQuery.of(context).size.height * 0.25 : 80,
-                      bottom: isPortrait ? MediaQuery.of(context).size.height * 0.25 : 80,
-                      child: Container(
-                        width: 16,
-                        decoration: BoxDecoration(
-                          color: darkSlate.withOpacity(0.8), borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.withOpacity(0.3), width: 2),
-                        ),
-                        alignment: Alignment.bottomCenter,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 100),
-                          height: (isPortrait ? MediaQuery.of(context).size.height * 0.5 : MediaQuery.of(context).size.height - 160) * frameData.formScore,
+                if (_currentPhase != SessionPhase.paused &&
+                    _currentPhase != SessionPhase.acquisition)
+                  Positioned(
+                    top: isPortrait ? 60 : 20,
+                    right: 20,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _pauseSession,
+                        borderRadius: BorderRadius.circular(30),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: Color.lerp(neonRed, mintGreen, frameData.formScore),
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: [BoxShadow(color: Color.lerp(neonRed, mintGreen, frameData.formScore)!.withOpacity(0.5), blurRadius: 8)]
-                          ),
+                              color: Colors.black.withOpacity(0.6),
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                  color: mintGreen.withOpacity(0.5), width: 2)),
+                          child: const Icon(Icons.pause,
+                              color: mintGreen, size: 28),
                         ),
                       ),
                     ),
-
-                  if (_currentPhase == SessionPhase.active && currentExercise != null && _currentPhase != SessionPhase.paused)
-                    Positioned(
-                      bottom: isPortrait ? 40 : null,
-                      top: isPortrait ? null : MediaQuery.of(context).size.height / 2 - 90,
-                      left: 20,
-                      child: Container(
-                        width: 180, height: 180,
+                  ),
+                if (_currentPhase == SessionPhase.active &&
+                    currentExercise != null &&
+                    _currentPhase != SessionPhase.paused)
+                  Positioned(
+                    right: 20,
+                    top: isPortrait
+                        ? MediaQuery.of(context).size.height * 0.25
+                        : 80,
+                    bottom: isPortrait
+                        ? MediaQuery.of(context).size.height * 0.25
+                        : 80,
+                    child: Container(
+                      width: 16,
+                      decoration: BoxDecoration(
+                        color: darkSlate.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: Colors.grey.withOpacity(0.3), width: 2),
+                      ),
+                      alignment: Alignment.bottomCenter,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 100),
+                        height: (isPortrait
+                                ? MediaQuery.of(context).size.height * 0.5
+                                : MediaQuery.of(context).size.height - 160) *
+                            frameData.formScore,
                         decoration: BoxDecoration(
-                          shape: BoxShape.circle, color: Colors.black.withOpacity(0.3),
+                            color: Color.lerp(
+                                neonRed, mintGreen, frameData.formScore),
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [
+                              BoxShadow(
+                                  color: Color.lerp(neonRed, mintGreen,
+                                          frameData.formScore)!
+                                      .withOpacity(0.5),
+                                  blurRadius: 8)
+                            ]),
+                      ),
+                    ),
+                  ),
+                if (_currentPhase == SessionPhase.active &&
+                    currentExercise != null &&
+                    _currentPhase != SessionPhase.paused)
+                  Positioned(
+                    bottom: isPortrait ? 40 : null,
+                    top: isPortrait
+                        ? null
+                        : MediaQuery.of(context).size.height / 2 - 90,
+                    left: 20,
+                    child: Container(
+                      width: 180,
+                      height: 180,
+                      decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.black.withOpacity(0.3),
                           border: Border.all(
-                            color: frameData.formState == 1 ? mintGreen.withOpacity(0.8) : (frameData.formState == -1 ? neonRed : Colors.grey.withOpacity(0.3)), 
-                            width: 4
-                          ),
+                              color: frameData.formState == 1
+                                  ? mintGreen.withOpacity(0.8)
+                                  : (frameData.formState == -1
+                                      ? neonRed
+                                      : Colors.grey.withOpacity(0.3)),
+                              width: 4),
                           boxShadow: [
-                            if (frameData.formState == 1) BoxShadow(color: mintGreen.withOpacity(0.4), blurRadius: 20, spreadRadius: 2),
-                            if (frameData.formState == -1) BoxShadow(color: neonRed.withOpacity(0.6), blurRadius: 30, spreadRadius: 8),
-                          ]
-                        ),
+                            if (frameData.formState == 1)
+                              BoxShadow(
+                                  color: mintGreen.withOpacity(0.4),
+                                  blurRadius: 20,
+                                  spreadRadius: 2),
+                            if (frameData.formState == -1)
+                              BoxShadow(
+                                  color: neonRed.withOpacity(0.6),
+                                  blurRadius: 30,
+                                  spreadRadius: 8),
+                          ]),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           AnimatedSwitcher(
                             duration: const Duration(milliseconds: 200),
-                            transitionBuilder: (Widget child, Animation<double> animation) {
-                              return ScaleTransition(scale: animation, child: child);
+                            transitionBuilder:
+                                (Widget child, Animation<double> animation) {
+                              return ScaleTransition(
+                                  scale: animation, child: child);
                             },
                             child: Text(
                               _repsOrSecondsRemaining.toString(),
                               key: ValueKey<int>(_repsOrSecondsRemaining),
-                              style: const TextStyle(color: Colors.white, fontSize: 80, fontWeight: FontWeight.bold, height: 1.0),
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 80,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.0),
                             ),
                           ),
                           Text(currentExercise.isDuration ? 'SEC' : 'REPS',
-                              style: const TextStyle(color: Colors.grey, fontSize: 16, letterSpacing: 2.0)),
-                          ],
-                        ),
+                              style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 16,
+                                  letterSpacing: 2.0)),
+                        ],
                       ),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
-        );
-      }
-    );
+        ),
+      );
+    });
   }
 }
 
@@ -988,8 +1141,8 @@ class PoseOverlayData {
   final bool isFrontCamera;
   final int formState;
   final bool isDevicePortrait;
-  final Set<PoseLandmarkType> activeJoints; 
-  final Set<PoseLandmarkType> faultyJoints; 
+  final Set<PoseLandmarkType> activeJoints;
+  final Set<PoseLandmarkType> faultyJoints;
 
   PoseOverlayData({
     required this.poses,
@@ -998,8 +1151,8 @@ class PoseOverlayData {
     required this.isFrontCamera,
     required this.formState,
     required this.isDevicePortrait,
-    required this.activeJoints, 
-    required this.faultyJoints, 
+    required this.activeJoints,
+    required this.faultyJoints,
   });
 }
 
@@ -1011,8 +1164,8 @@ class PosePainter extends CustomPainter {
     required this.isFrontCamera,
     required this.formState,
     required this.isDevicePortrait,
-    required this.activeJoints, 
-    required this.faultyJoints, 
+    required this.activeJoints,
+    required this.faultyJoints,
   });
 
   final List<Pose> poses;
@@ -1022,20 +1175,40 @@ class PosePainter extends CustomPainter {
   final int formState;
   final bool isDevicePortrait;
   final Set<PoseLandmarkType> activeJoints;
-  final Set<PoseLandmarkType> faultyJoints; 
+  final Set<PoseLandmarkType> faultyJoints;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final glowPaint = Paint()..color = Colors.white.withOpacity(0.6)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
-    final solidPointPaint = Paint()..color = Colors.white..style = PaintingStyle.fill;
-    final inactivePointPaint = Paint()..color = Colors.grey.withOpacity(0.5)..style = PaintingStyle.fill;
+    final glowPaint = Paint()
+      ..color = Colors.white.withOpacity(0.6)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10);
+    final solidPointPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    final inactivePointPaint = Paint()
+      ..color = Colors.grey.withOpacity(0.5)
+      ..style = PaintingStyle.fill;
 
-    final activeLinePaint = Paint()..color = mintGreen.withOpacity(0.8)..strokeWidth = 6..strokeCap = StrokeCap.round..style = PaintingStyle.stroke;
-    final faultyLinePaint = Paint()..color = neonRed..strokeWidth = 8..strokeCap = StrokeCap.round..style = PaintingStyle.stroke;
-    final inactiveLinePaint = Paint()..color = Colors.grey.withOpacity(0.3)..strokeWidth = 4..strokeCap = StrokeCap.round..style = PaintingStyle.stroke;
+    final activeLinePaint = Paint()
+      ..color = mintGreen.withOpacity(0.8)
+      ..strokeWidth = 6
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    final faultyLinePaint = Paint()
+      ..color = neonRed
+      ..strokeWidth = 8
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    final inactiveLinePaint = Paint()
+      ..color = Colors.grey.withOpacity(0.3)
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
 
-    final double absoluteImageWidth = isDevicePortrait ? imageSize.height : imageSize.width;
-    final double absoluteImageHeight = isDevicePortrait ? imageSize.width : imageSize.height;
+    final double absoluteImageWidth =
+        isDevicePortrait ? imageSize.height : imageSize.width;
+    final double absoluteImageHeight =
+        isDevicePortrait ? imageSize.width : imageSize.height;
 
     for (final pose in poses) {
       final landmarks = pose.landmarks;
@@ -1043,11 +1216,12 @@ class PosePainter extends CustomPainter {
       void drawPoint(PoseLandmarkType type) {
         final landmark = landmarks[type];
         if (landmark == null || landmark.likelihood < 0.6) return;
-        final point = _mapPoint(Offset(landmark.x, landmark.y), size, absoluteImageWidth, absoluteImageHeight);
-        
+        final point = _mapPoint(Offset(landmark.x, landmark.y), size,
+            absoluteImageWidth, absoluteImageHeight);
+
         if (activeJoints.isEmpty || activeJoints.contains(type)) {
           if (type == PoseLandmarkType.nose) {
-            canvas.drawCircle(point, 30, glowPaint); 
+            canvas.drawCircle(point, 30, glowPaint);
             canvas.drawCircle(point, 16, solidPointPaint);
           } else {
             canvas.drawCircle(point, 18, glowPaint);
@@ -1061,12 +1235,18 @@ class PosePainter extends CustomPainter {
       void drawLine(PoseLandmarkType a, PoseLandmarkType b) {
         final p1 = landmarks[a];
         final p2 = landmarks[b];
-        if (p1 == null || p2 == null || p1.likelihood < 0.6 || p2.likelihood < 0.6) return;
-        final start = _mapPoint(Offset(p1.x, p1.y), size, absoluteImageWidth, absoluteImageHeight);
-        final end = _mapPoint(Offset(p2.x, p2.y), size, absoluteImageWidth, absoluteImageHeight);
-        
+        if (p1 == null ||
+            p2 == null ||
+            p1.likelihood < 0.6 ||
+            p2.likelihood < 0.6) return;
+        final start = _mapPoint(
+            Offset(p1.x, p1.y), size, absoluteImageWidth, absoluteImageHeight);
+        final end = _mapPoint(
+            Offset(p2.x, p2.y), size, absoluteImageWidth, absoluteImageHeight);
+
         bool isFaulty = faultyJoints.contains(a) && faultyJoints.contains(b);
-        bool isActive = activeJoints.isEmpty || (activeJoints.contains(a) && activeJoints.contains(b));
+        bool isActive = activeJoints.isEmpty ||
+            (activeJoints.contains(a) && activeJoints.contains(b));
 
         if (isFaulty) {
           canvas.drawLine(start, end, faultyLinePaint);
@@ -1082,7 +1262,7 @@ class PosePainter extends CustomPainter {
       drawLine(PoseLandmarkType.leftElbow, PoseLandmarkType.leftWrist);
       drawLine(PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow);
       drawLine(PoseLandmarkType.rightElbow, PoseLandmarkType.rightWrist);
-      
+
       drawLine(PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip);
       drawLine(PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip);
       drawLine(PoseLandmarkType.leftHip, PoseLandmarkType.rightHip);
@@ -1094,13 +1274,15 @@ class PosePainter extends CustomPainter {
       final nose = landmarks[PoseLandmarkType.nose];
       final lShoulder = landmarks[PoseLandmarkType.leftShoulder];
       final rShoulder = landmarks[PoseLandmarkType.rightShoulder];
-      
+
       if (nose != null && lShoulder != null && rShoulder != null) {
-        final nosePoint = _mapPoint(Offset(nose.x, nose.y), size, absoluteImageWidth, absoluteImageHeight);
+        final nosePoint = _mapPoint(Offset(nose.x, nose.y), size,
+            absoluteImageWidth, absoluteImageHeight);
         final midShoulderX = (lShoulder.x + rShoulder.x) / 2;
         final midShoulderY = (lShoulder.y + rShoulder.y) / 2;
-        final midShoulderPoint = _mapPoint(Offset(midShoulderX, midShoulderY), size, absoluteImageWidth, absoluteImageHeight);
-        
+        final midShoulderPoint = _mapPoint(Offset(midShoulderX, midShoulderY),
+            size, absoluteImageWidth, absoluteImageHeight);
+
         if (activeJoints.contains(PoseLandmarkType.leftShoulder)) {
           canvas.drawLine(nosePoint, midShoulderPoint, activeLinePaint);
         } else {
@@ -1109,12 +1291,18 @@ class PosePainter extends CustomPainter {
       }
 
       final bodyNodes = [
-        PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder,
-        PoseLandmarkType.leftElbow, PoseLandmarkType.rightElbow,
-        PoseLandmarkType.leftWrist, PoseLandmarkType.rightWrist,
-        PoseLandmarkType.leftHip, PoseLandmarkType.rightHip,
-        PoseLandmarkType.leftKnee, PoseLandmarkType.rightKnee,
-        PoseLandmarkType.leftAnkle, PoseLandmarkType.rightAnkle,
+        PoseLandmarkType.leftShoulder,
+        PoseLandmarkType.rightShoulder,
+        PoseLandmarkType.leftElbow,
+        PoseLandmarkType.rightElbow,
+        PoseLandmarkType.leftWrist,
+        PoseLandmarkType.rightWrist,
+        PoseLandmarkType.leftHip,
+        PoseLandmarkType.rightHip,
+        PoseLandmarkType.leftKnee,
+        PoseLandmarkType.rightKnee,
+        PoseLandmarkType.leftAnkle,
+        PoseLandmarkType.rightAnkle,
         PoseLandmarkType.nose
       ];
       for (final type in bodyNodes) {
@@ -1123,7 +1311,8 @@ class PosePainter extends CustomPainter {
     }
   }
 
-  Offset _mapPoint(Offset point, Size canvasSize, double imgWidth, double imgHeight) {
+  Offset _mapPoint(
+      Offset point, Size canvasSize, double imgWidth, double imgHeight) {
     double mappedX = point.dx / imgWidth * canvasSize.width;
     double mappedY = point.dy / imgHeight * canvasSize.height;
     if (isFrontCamera) mappedX = canvasSize.width - mappedX;

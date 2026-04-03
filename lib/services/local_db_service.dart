@@ -47,65 +47,70 @@ class LocalDBService {
       },
     );
   }
-  
+
   // --- NEW: CREATE SESSION CHECKPOINT ---
   Future<void> createSessionRecord(Map<String, dynamic> sessionData) async {
     final db = await database;
     // Use ConflictAlgorithm.ignore so we don't overwrite it if we re-save
-    await db.insert('workout_sessions', sessionData, conflictAlgorithm: ConflictAlgorithm.ignore);
+    await db.insert('workout_sessions', sessionData,
+        conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
   // --- NEW: APPEND EXERCISE TELEMETRY ---
-  Future<void> appendExerciseTelemetry(Map<String, dynamic> exerciseData) async {
-  final db = await database;
-  final batch = db.batch();
-  
-  final String exerciseId = exerciseData['id'];
-  
-  // 1. Insert the parent exercise record (removed rep_scores_array)
-  batch.insert('exercise_telemetry', {
-    'id': exerciseId,
-    'session_id': exerciseData['session_id'],
-    'exercise_name': exerciseData['exercise_name'],
-    'good_reps': exerciseData['good_reps'],
-    'bad_reps': exerciseData['bad_reps'],
-    'exercise_score': exerciseData['exercise_score'],
-  });
+  Future<void> appendExerciseTelemetry(
+      Map<String, dynamic> exerciseData) async {
+    final db = await database;
+    final batch = db.batch();
 
-  // 2. Insert the child rep records
-  final List<double> reps = List<double>.from(exerciseData['rep_scores_array'] ?? []);
-  for (int i = 0; i < reps.length; i++) {
-    batch.insert('rep_telemetry', {
-      'id': const Uuid().v4(),
-      'exercise_telemetry_id': exerciseId,
-      'rep_number': i + 1,
-      'score': reps[i],
+    final String exerciseId = exerciseData['id'];
+
+    // 1. Insert the parent exercise record (removed rep_scores_array)
+    batch.insert('exercise_telemetry', {
+      'id': exerciseId,
+      'session_id': exerciseData['session_id'],
+      'exercise_name': exerciseData['exercise_name'],
+      'good_reps': exerciseData['good_reps'],
+      'bad_reps': exerciseData['bad_reps'],
+      'exercise_score': exerciseData['exercise_score'],
     });
+
+    // 2. Insert the child rep records
+    final List<double> reps =
+        List<double>.from(exerciseData['rep_scores_array'] ?? []);
+    for (int i = 0; i < reps.length; i++) {
+      batch.insert('rep_telemetry', {
+        'id': const Uuid().v4(),
+        'exercise_telemetry_id': exerciseId,
+        'rep_number': i + 1,
+        'score': reps[i],
+      });
+    }
+
+    await batch.commit(noResult: true);
   }
 
-  await batch.commit(noResult: true);
-}
-
   // --- NEW: UPDATE SESSION STATUS & SCORE ---
-  Future<void> updateSessionCompletion(String sessionId, String status, int globalScore, int durationSeconds) async {
+  Future<void> updateSessionCompletion(String sessionId, String status,
+      int globalScore, int durationSeconds) async {
     final db = await database;
     await db.update(
-      'workout_sessions',
-      {
-        'status': status,
-        'global_score': globalScore,
-        'duration_seconds': durationSeconds,
-        'sync_status': 0 // Reset sync status so the server gets the final update
-      },
-      where: 'id = ?',
-      whereArgs: [sessionId]
-    );
+        'workout_sessions',
+        {
+          'status': status,
+          'global_score': globalScore,
+          'duration_seconds': durationSeconds,
+          'sync_status':
+              0 // Reset sync status so the server gets the final update
+        },
+        where: 'id = ?',
+        whereArgs: [sessionId]);
   }
 
   // --- SAVE WORKOUT TO PHONE ---
-  Future<void> saveWorkoutOffline(Map<String, dynamic> sessionData, List<Map<String, dynamic>> exercisesData) async {
+  Future<void> saveWorkoutOffline(Map<String, dynamic> sessionData,
+      List<Map<String, dynamic>> exercisesData) async {
     final db = await database;
-    
+
     await db.transaction((txn) async {
       await txn.insert('workout_sessions', sessionData);
       for (var ex in exercisesData) {
@@ -117,61 +122,54 @@ class LocalDBService {
 
   // --- GRAB TRAPPED DATA ---
   Future<List<Map<String, dynamic>>> getUnsyncedSessions() async {
-  final db = await database;
-  
-  // 1. Fetch parent sessions
-  final sessions = await db.query(
-    'workout_sessions', 
-    where: 'sync_status = ?', 
-    whereArgs: [0]
-  );
-  
-  List<Map<String, dynamic>> masterPayload = [];
+    final db = await database;
 
-  for (var session in sessions) {
-    Map<String, dynamic> sessionData = Map.from(session);
-    
-    // 2. Fetch child exercises
-    final exercises = await db.query(
-      'exercise_telemetry', 
-      where: 'session_id = ?', 
-      whereArgs: [session['id']]
-    );
-    
-    List<Map<String, dynamic>> exercisesList = [];
+    // 1. Fetch parent sessions
+    final sessions = await db
+        .query('workout_sessions', where: 'sync_status = ?', whereArgs: [0]);
 
-    for (var ex in exercises) {
-      Map<String, dynamic> exData = Map.from(ex);
-      
-      // 3. Fetch grandchild reps from the NEW normalized table
-      final reps = await db.query(
-        'rep_telemetry', 
-        where: 'exercise_telemetry_id = ?', 
-        whereArgs: [ex['id']], 
-        orderBy: 'rep_number ASC'
-      );
+    List<Map<String, dynamic>> masterPayload = [];
 
-      // Map exactly to the 'reps' key the PHP script expects
-      exData['reps'] = reps.map((r) => r['score']).toList();
-      exercisesList.add(exData);
+    for (var session in sessions) {
+      Map<String, dynamic> sessionData = Map.from(session);
+
+      // 2. Fetch child exercises
+      final exercises = await db.query('exercise_telemetry',
+          where: 'session_id = ?', whereArgs: [session['id']]);
+
+      List<Map<String, dynamic>> exercisesList = [];
+
+      for (var ex in exercises) {
+        Map<String, dynamic> exData = Map.from(ex);
+
+        // 3. Fetch grandchild reps from the NEW normalized table
+        final reps = await db.query('rep_telemetry',
+            where: 'exercise_telemetry_id = ?',
+            whereArgs: [ex['id']],
+            orderBy: 'rep_number ASC');
+
+        // Map exactly to the 'reps' key the PHP script expects
+        exData['reps'] = reps.map((r) => r['score']).toList();
+        exercisesList.add(exData);
+      }
+
+      sessionData['exercises'] = exercisesList;
+      masterPayload.add(sessionData);
     }
-    
-    sessionData['exercises'] = exercisesList;
-    masterPayload.add(sessionData);
-  }
-  
-  return masterPayload;
-}
 
-Future<void> markSessionSynced(String sessionId) async {
-  final db = await database;
-  await db.update(
-    'workout_sessions',
-    {'sync_status': 1},
-    where: 'id = ?',
-    whereArgs: [sessionId],
-  );
-}
+    return masterPayload;
+  }
+
+  Future<void> markSessionSynced(String sessionId) async {
+    final db = await database;
+    await db.update(
+      'workout_sessions',
+      {'sync_status': 1},
+      where: 'id = ?',
+      whereArgs: [sessionId],
+    );
+  }
+
   // --- FETCH DASHBOARD DATA ---
   Future<List<Map<String, dynamic>>> getCompletedSessions() async {
     final db = await database;
@@ -180,14 +178,14 @@ Future<void> markSessionSynced(String sessionId) async {
       'workout_sessions',
       where: 'status = ?',
       whereArgs: ['COMPLETED'],
-      orderBy: 'created_at ASC', 
+      orderBy: 'created_at ASC',
     );
   }
-  
+
   // --- INJECT DOWNLOADED HISTORY ---
   Future<void> saveDownloadedHistory(List<dynamic> serverSessions) async {
     final db = await database;
-    
+
     // We run this as a massive batch transaction for speed
     await db.transaction((txn) async {
       for (var session in serverSessions) {
@@ -204,7 +202,8 @@ Future<void> markSessionSynced(String sessionId) async {
         };
 
         // ConflictAlgorithm.replace prevents crashes if the data already exists locally
-        await txn.insert('workout_sessions', sessionData, conflictAlgorithm: ConflictAlgorithm.replace);
+        await txn.insert('workout_sessions', sessionData,
+            conflictAlgorithm: ConflictAlgorithm.replace);
 
         // Prepare the child telemetry rows
         List<dynamic> exercises = session['exercises'] ?? [];
@@ -216,13 +215,16 @@ Future<void> markSessionSynced(String sessionId) async {
             'good_reps': ex['good_reps'],
             'bad_reps': ex['bad_reps'],
             'exercise_score': ex['exercise_score'],
-            'rep_scores_array': jsonEncode(ex['rep_scores']), // Re-stringify for SQLite
+            'rep_scores_array':
+                jsonEncode(ex['rep_scores']), // Re-stringify for SQLite
           };
-          await txn.insert('exercise_telemetry', exData, conflictAlgorithm: ConflictAlgorithm.replace);
+          await txn.insert('exercise_telemetry', exData,
+              conflictAlgorithm: ConflictAlgorithm.replace);
         }
       }
     });
   }
+
   // --- DASHBOARD ANALYTICS ENGINE ---
   Future<Map<String, dynamic>> getDashboardAggregates() async {
     final db = await database;
@@ -264,7 +266,7 @@ Future<void> markSessionSynced(String sessionId) async {
       FROM workout_sessions WHERE status = 'COMPLETED' AND created_at >= date('now', '-7 days')
       GROUP BY day ORDER BY day ASC
     ''');
-    
+
     final daily30 = await db.rawQuery('''
       SELECT date(created_at) as day, AVG(global_score) as avg_score 
       FROM workout_sessions WHERE status = 'COMPLETED' AND created_at >= date('now', '-30 days')
@@ -305,12 +307,11 @@ Future<void> markSessionSynced(String sessionId) async {
       AND workout_sessions.created_at >= date('now', '-$days days')
     ''');
   }
-  Future<List<Map<String, dynamic>>> getTelemetryForSession(String sessionId) async {
+
+  Future<List<Map<String, dynamic>>> getTelemetryForSession(
+      String sessionId) async {
     final db = await database;
-    return await db.query(
-      'exercise_telemetry', 
-      where: 'session_id = ?', 
-      whereArgs: [sessionId]
-    );
+    return await db.query('exercise_telemetry',
+        where: 'session_id = ?', whereArgs: [sessionId]);
   }
 }
