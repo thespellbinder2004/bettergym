@@ -9,6 +9,9 @@ import '../services/api_services.dart';
 import 'progress_report_page.dart';
 import 'session_summary_page.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+import '../services/sync_service.dart';
+
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
 
@@ -26,10 +29,100 @@ class _DashboardPageState extends State<DashboardPage> {
   String? _selectedFatigueExercise;
   List<int> _weeklyHeatmap = [0, 0, 0, 0, 0, 0, 0];
 
+  String _recentActivityFilter = 'realtime'; // 'realtime' or 'ai'
+
   @override
   void initState() {
     super.initState();
     _loadDashboardData();
+  }
+
+  bool _isAiSession(Map<String, dynamic> session) {
+    final dynamic rawMode =
+        session['mode'] ?? session['session_type'] ?? session['source'];
+
+    if (rawMode is String) {
+      final mode = rawMode.toLowerCase().trim();
+      return mode == 'ai' ||
+          mode == 'ai_mode' ||
+          mode == 'artificial_intelligence';
+    }
+
+    final dynamic isAi = session['is_ai'];
+    if (isAi is bool) return isAi;
+    if (isAi is int) return isAi == 1;
+    if (isAi is String) return isAi == '1' || isAi.toLowerCase() == 'true';
+
+    return false;
+  }
+
+  Widget _buildRecentActivityFilter() {
+    Widget buildOption({
+      required String value,
+      required String label,
+      required IconData icon,
+    }) {
+      final bool isSelected = _recentActivityFilter == value;
+
+      return Expanded(
+        child: GestureDetector(
+          onTap: () {
+            setState(() {
+              _recentActivityFilter = value;
+            });
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              color: isSelected ? mintGreen : navyBlue,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected ? mintGreen : Colors.white.withOpacity(0.08),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
+                  color: isSelected ? navyBlue : Colors.white70,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: isSelected ? navyBlue : Colors.white70,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return _buildGlassCard(
+      padding: const EdgeInsets.all(6),
+      child: Row(
+        children: [
+          buildOption(
+            value: 'realtime',
+            label: 'Real-time',
+            icon: Icons.flash_on_rounded,
+          ),
+          const SizedBox(width: 8),
+          buildOption(
+            value: 'ai',
+            label: 'AI',
+            icon: Icons.auto_awesome_rounded,
+          ),
+        ],
+      ),
+    );
   }
 
   // --- THE COLOR SOP ---
@@ -43,9 +136,19 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _loadDashboardData() async {
     try {
-      // Trigger background sync without freezing the UI
-      ApiService.syncOfflineData();
+      final prefs = await SharedPreferences.getInstance();
+      final int? userId = prefs.getInt('user_id');
+      final String? token = prefs.getString('auth_token');
 
+      // 1. Push local unsynced data
+      await SyncService.pushUnsyncedData();
+
+      // 2. Pull latest history from server
+      if (userId != null && token != null) {
+        await SyncService.pullHistoricalData(userId, token);
+      }
+
+      // 3. Reload dashboard from local DB
       final aggregates = await LocalDBService.instance.getDashboardAggregates();
       final rawEndurance = await LocalDBService.instance
           .getRawTelemetryForPeriod(_enduranceLookback);
@@ -152,21 +255,46 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     final timeline = List<Map<String, dynamic>>.from(_data['timeline'] ?? []);
+
+    final filteredTimeline = timeline.where((session) {
+      final isAi = _isAiSession(session);
+      return _recentActivityFilter == 'ai' ? isAi : !isAi;
+    }).toList();
+
     final bool isDayZero = timeline.isEmpty;
 
     if (isDayZero) {
       return Scaffold(
+        backgroundColor: navyBlue,
+        appBar: AppBar(
           backgroundColor: navyBlue,
-          appBar: AppBar(
-              backgroundColor: navyBlue,
-              elevation: 0,
-              title: const Text('DASHBOARD',
-                  style: TextStyle(
-                      color: mintGreen,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 2.0,
-                      fontSize: 16))),
-          body: _buildZeroState());
+          elevation: 0,
+          title: const Text(
+            'DASHBOARD',
+            style: TextStyle(
+              color: mintGreen,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 2.0,
+              fontSize: 16,
+            ),
+          ),
+        ),
+        body: RefreshIndicator(
+          color: mintGreen,
+          backgroundColor: darkSlate,
+          onRefresh: _loadDashboardData,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            children: [
+              SizedBox(
+                height: MediaQuery.of(context).size.height * 0.7,
+                child: _buildZeroState(),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     final lastKnown = _data['last_known'];
@@ -195,8 +323,8 @@ class _DashboardPageState extends State<DashboardPage> {
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
             // --- GIMMICK: LATEST ACTIVITY TRANSPORT ---
-            if (_transportActive && timeline.isNotEmpty) ...[
-              _buildTimelineNode(timeline.first),
+            if (_transportActive && filteredTimeline.isNotEmpty) ...[
+              _buildTimelineNode(filteredTimeline.first),
               const SizedBox(height: 24),
             ],
 
@@ -329,7 +457,24 @@ class _DashboardPageState extends State<DashboardPage> {
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.2)),
               const SizedBox(height: 8),
-              ...timeline.take(5).map((s) => _buildTimelineNode(s)),
+              _buildRecentActivityFilter(),
+              const SizedBox(height: 12),
+              if (filteredTimeline.isEmpty)
+                _buildGlassCard(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    _recentActivityFilter == 'ai'
+                        ? 'No AI sessions yet.'
+                        : 'No real-time sessions yet.',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                )
+              else
+                ...filteredTimeline.take(5).map((s) => _buildTimelineNode(s)),
             ],
 
             const SizedBox(height: 40),
