@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../main.dart'; 
+
+import '../main.dart';
 import 'dashboard_page.dart';
 import 'notifications_page.dart';
 import 'profile_page.dart';
@@ -14,7 +15,7 @@ class MainLayout extends StatefulWidget {
 }
 
 class _MainLayoutState extends State<MainLayout> {
-  int _currentIndex = 1; 
+  int _currentIndex = 1;
 
   late final List<Widget> _pages;
 
@@ -23,9 +24,9 @@ class _MainLayoutState extends State<MainLayout> {
     super.initState();
     _pages = const [
       SettingsPage(),
-      DashboardPage(), 
+      DashboardPage(),
       NotificationsPage(),
-      ProfilePage(),   
+      ProfilePage(),
     ];
   }
 
@@ -43,32 +44,31 @@ class _MainLayoutState extends State<MainLayout> {
         child: _pages[_currentIndex],
       ),
       floatingActionButton: SizedBox(
-        height: 72, 
-        width: 72,  
+        height: 72,
+        width: 72,
         child: FloatingActionButton(
           backgroundColor: mintGreen,
-          elevation: 12, 
+          elevation: 12,
           shape: CircleBorder(
-            side: BorderSide(color: mintGreen.withOpacity(0.5), width: 2), 
+            side: BorderSide(color: mintGreen.withOpacity(0.5), width: 2),
           ),
           onPressed: () {
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => const SessionSetupPage(),
-                fullscreenDialog: true, 
+                fullscreenDialog: true,
               ),
             );
           },
-          child: const Icon(Icons.camera_alt, color: navyBlue, size: 36), 
+          child: const Icon(Icons.camera_alt, color: navyBlue, size: 36),
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      
       bottomNavigationBar: BottomAppBar(
         color: darkSlate,
         shape: const CircularNotchedRectangle(),
-        notchMargin: 10.0, 
+        notchMargin: 10.0,
         child: SizedBox(
           height: 65,
           child: Row(
@@ -76,11 +76,12 @@ class _MainLayoutState extends State<MainLayout> {
             children: [
               _buildTabItem(icon: Icons.settings, index: 0, label: 'Settings'),
               _buildTabItem(icon: Icons.dashboard, index: 1, label: 'Stats'),
-              const SizedBox(width: 60), 
+              const SizedBox(width: 60),
               Badge(
-                isLabelVisible: true, 
+                isLabelVisible: true,
                 backgroundColor: neonRed,
-                child: _buildTabItem(icon: Icons.notifications, index: 2, label: 'Alerts'),
+                child: _buildTabItem(
+                    icon: Icons.notifications, index: 2, label: 'Alerts'),
               ),
               _buildTabItem(icon: Icons.person, index: 3, label: 'Profile'),
             ],
@@ -90,7 +91,8 @@ class _MainLayoutState extends State<MainLayout> {
     );
   }
 
-  Widget _buildTabItem({required IconData icon, required int index, required String label}) {
+  Widget _buildTabItem(
+      {required IconData icon, required int index, required String label}) {
     final isSelected = _currentIndex == index;
     final color = isSelected ? mintGreen : Colors.grey.shade600;
 
@@ -105,8 +107,8 @@ class _MainLayoutState extends State<MainLayout> {
           Text(
             label,
             style: TextStyle(
-              color: color, 
-              fontSize: 10, 
+              color: color,
+              fontSize: 10,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             ),
           ),

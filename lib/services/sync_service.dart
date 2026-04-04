@@ -85,7 +85,8 @@ class SyncService {
   static Future<bool> pullHistoricalData(int userId, String token) async {
     try {
       debugPrint("SyncService: Pulling historical data for User $userId...");
-
+      debugPrint(
+          "SyncService: fetchHistoryEndpoint = ${ApiConstants.fetchHistoryEndpoint}");
       final response = await http
           .post(
             Uri.parse(ApiConstants.fetchHistoryEndpoint),
