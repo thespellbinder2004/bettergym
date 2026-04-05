@@ -194,38 +194,43 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _processEndurance(List<Map<String, dynamic>> telemetry) {
-    Map<String, List<List<double>>> rawArrays = {};
+    Map<String, List<double>> trends = {};
+    
     for (var row in telemetry) {
       try {
-        List<double> scores = List<double>.from(
-            jsonDecode(row['rep_scores_array'])
-                .map((e) => (e as num).toDouble()));
-        rawArrays.putIfAbsent(row['exercise_name'], () => []).add(scores);
-      } catch (_) {}
+        String exName = row['exercise_name'];
+        List<double> scores = [];
+        
+        // Handle both JSON string and raw Lists depending on how the DB fed it
+        if (row['rep_scores_array'] is String) {
+          scores = List<double>.from(jsonDecode(row['rep_scores_array']).map((e) => (e as num).toDouble()));
+        } else if (row['rep_scores_array'] is List) {
+          scores = List<double>.from(row['rep_scores_array'].map((e) => (e as num).toDouble()));
+        }
+        
+        double avgScore = 0.0;
+        if (scores.isNotEmpty) {
+          avgScore = scores.reduce((a, b) => a + b) / scores.length;
+        } else {
+          // Fallback if no raw rep scores exist
+          int good = (row['good_reps'] as num?)?.toInt() ?? 0;
+          int bad = (row['bad_reps'] as num?)?.toInt() ?? 0;
+          int total = good + bad;
+          if (total > 0) avgScore = good / total;
+        }
+        
+        trends.putIfAbsent(exName, () => []).add(avgScore);
+      } catch (e) {
+        debugPrint("Trend Processing Error: $e");
+      }
     }
 
-    Map<String, List<double>> averaged = {};
-    rawArrays.forEach((name, sets) {
-      int maxLen = sets.map((s) => s.length).reduce(math.max);
-      List<double> curve = [];
-      for (int i = 0; i < maxLen; i++) {
-        double sum = 0;
-        int count = 0;
-        for (var s in sets) {
-          if (i < s.length) {
-            sum += s[i];
-            count++;
-          }
-        }
-        curve.add(sum / count);
-      }
-      averaged[name] = curve;
-    });
-
     setState(() {
-      _fatigueCurves = averaged;
-      if (_fatigueCurves.isNotEmpty)
+      _fatigueCurves = trends;
+      // Auto-select the first exercise in the dropdown if one isn't selected
+      if (_fatigueCurves.isNotEmpty && (_selectedFatigueExercise == null || !_fatigueCurves.containsKey(_selectedFatigueExercise))) {
         _selectedFatigueExercise = _fatigueCurves.keys.first;
+      }
     });
   }
 
@@ -514,9 +519,19 @@ class _DashboardPageState extends State<DashboardPage> {
                   fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           Center(
-            child: SizedBox(
+            child: Container(
               height: 80,
               width: 80,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: ringColor.withOpacity(0.35), // The Glow Emission
+                    blurRadius: 16,
+                    spreadRadius: 2,
+                  )
+                ]
+              ),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -732,7 +747,7 @@ class _DashboardPageState extends State<DashboardPage> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text("FORM PROGRESSION",
+            const Text("PERFORMANCE TREND",
                 style: TextStyle(
                     color: Colors.grey,
                     fontSize: 12,
@@ -1009,32 +1024,31 @@ class _DashboardPageState extends State<DashboardPage> {
         trailing:
             const Icon(Icons.chevron_right, color: Colors.white38, size: 24),
         onTap: () async {
-          // 1. Fetch historical raw data
-          final rawTelemetry = await LocalDBService.instance
-              .getTelemetryForSession(session['id']);
+          // 1. Fetch historical raw data AND the missing rep data
+          final db = await LocalDBService.instance.database;
+          final rawTelemetry = await db.query('exercise_telemetry', where: 'session_id = ?', whereArgs: [session['id']]);
 
-          // 2. Reconstruct ExerciseTelemetry objects
-          List<ExerciseTelemetry> historicalData = rawTelemetry.map((row) {
-            List<double> scores = [];
-            try {
-              scores = List<double>.from(jsonDecode(row['rep_scores_array'])
-                  .map((e) => (e as num).toDouble()));
-            } catch (_) {}
-
-            bool isTimeBased =
-                row['exercise_name'].toString().toLowerCase().contains('plank');
-
+          List<ExerciseTelemetry> historicalData = [];
+          
+          for (var row in rawTelemetry) {
+            // Fetch the reps that belong to this specific exercise
+            final repRows = await db.query('rep_telemetry', where: 'exercise_telemetry_id = ?', whereArgs: [row['id']], orderBy: 'rep_number ASC');
+            List<double> scores = repRows.map((r) => (r['score'] as num).toDouble()).toList();
+            
+            bool isTimeBased = row['exercise_name'].toString().toLowerCase().contains('plank');
+            
             ExerciseTelemetry ex = ExerciseTelemetry(
-              name: row['exercise_name'],
-              target: row['good_reps'] + row['bad_reps'],
+              name: row['exercise_name'].toString(),
+              target: ((row['good_reps'] as num?)?.toInt() ?? 0) + ((row['bad_reps'] as num?)?.toInt() ?? 0),
               isDuration: isTimeBased,
             );
-
-            ex.goodReps = row['good_reps'];
-            ex.badReps = row['bad_reps'];
-            ex.repScores = scores;
-            return ex;
-          }).toList();
+            
+            ex.goodReps = (row['good_reps'] as num?)?.toInt() ?? 0;
+            ex.badReps = (row['bad_reps'] as num?)?.toInt() ?? 0;
+            ex.repScores = scores; // Inject the missing scores!
+            
+            historicalData.add(ex);
+          }
 
           if (!context.mounted) return;
 
