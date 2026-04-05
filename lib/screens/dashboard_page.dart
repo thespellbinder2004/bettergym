@@ -11,6 +11,7 @@ import 'session_summary_page.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/sync_service.dart';
+import 'progress_report_page_ai.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -154,7 +155,9 @@ class _DashboardPageState extends State<DashboardPage> {
           .getRawTelemetryForPeriod(_enduranceLookback);
 
       _processEndurance(rawEndurance);
-      _processWeeklyConsistency(aggregates['timeline'] ?? []);
+      _processWeeklyConsistency(
+        List<Map<String, dynamic>>.from(aggregates['timeline_realtime'] ?? []),
+      );
 
       if (mounted) {
         setState(() {
@@ -175,13 +178,18 @@ class _DashboardPageState extends State<DashboardPage> {
         .subtract(Duration(days: now.weekday - 1));
 
     for (var s in sessions) {
-      final date = DateTime.parse(s['created_at']).toLocal();
-      final score = s['global_score'] as int;
+      final createdAt = s['created_at'];
+      if (createdAt == null) continue;
+
+      final date = DateTime.parse(createdAt).toLocal();
+      final score = (s['global_score'] as num?)?.toInt() ?? 0;
+
       if (date.isAfter(startOfWeek.subtract(const Duration(seconds: 1)))) {
         int dayIndex = date.weekday - 1;
         generatedHeatmap[dayIndex] = score > 75 ? 2 : 1;
       }
     }
+
     _weeklyHeatmap = generatedHeatmap;
   }
 
@@ -254,14 +262,16 @@ class _DashboardPageState extends State<DashboardPage> {
           body: Center(child: CircularProgressIndicator(color: mintGreen)));
     }
 
-    final timeline = List<Map<String, dynamic>>.from(_data['timeline'] ?? []);
+    final realtimeTimeline =
+        List<Map<String, dynamic>>.from(_data['timeline_realtime'] ?? []);
+    final aiTimeline =
+        List<Map<String, dynamic>>.from(_data['timeline_ai'] ?? []);
 
-    final filteredTimeline = timeline.where((session) {
-      final isAi = _isAiSession(session);
-      return _recentActivityFilter == 'ai' ? isAi : !isAi;
-    }).toList();
+    final filteredTimeline =
+        _recentActivityFilter == 'ai' ? aiTimeline : realtimeTimeline;
 
-    final bool isDayZero = timeline.isEmpty;
+    final allTimeline = [...realtimeTimeline, ...aiTimeline];
+    final bool isDayZero = allTimeline.isEmpty;
 
     if (isDayZero) {
       return Scaffold(
@@ -474,7 +484,11 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                 )
               else
-                ...filteredTimeline.take(5).map((s) => _buildTimelineNode(s)),
+                ...filteredTimeline.take(5).map((s) {
+                  return _recentActivityFilter == 'ai'
+                      ? _buildAiTimelineNode(s)
+                      : _buildTimelineNode(s);
+                }),
             ],
 
             const SizedBox(height: 40),
@@ -806,6 +820,149 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildAiTimelineNode(Map<String, dynamic> session) {
+    DateTime dt = DateTime.parse(session['created_at']).toLocal();
+    DateTime now = DateTime.now();
+
+    int diffDays = DateTime(now.year, now.month, now.day)
+        .difference(DateTime(dt.year, dt.month, dt.day))
+        .inDays;
+
+    String timeStr = diffDays == 0
+        ? "Today"
+        : (diffDays == 1 ? "Yesterday" : "$diffDays days ago");
+
+    final String status = (session['status'] ?? 'pending').toString();
+    final bool isCompleted = status.toLowerCase() == 'completed';
+
+    final double score =
+        ((session['global_score'] ?? session['score'] ?? 0) as num).toDouble();
+
+    Color statusColor;
+    switch (status.toLowerCase()) {
+      case 'completed':
+        statusColor = mintGreen;
+        break;
+      case 'in_progress':
+      case 'pending':
+        statusColor = Colors.orange;
+        break;
+      case 'failed':
+      case 'aborted':
+        statusColor = neonRed;
+        break;
+      default:
+        statusColor = Colors.white70;
+    }
+
+    final Color scoreColor = _getScoreColor(score);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: darkSlate,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: mintGreen.withOpacity(0.12)),
+      ),
+      child: ListTile(
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        leading: isCompleted
+            ? Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: scoreColor, width: 2),
+                  color: Colors.black.withOpacity(0.2),
+                ),
+                child: Center(
+                  child: Text(
+                    "${score.toInt()}",
+                    style: TextStyle(
+                      color: scoreColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              )
+            : Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: mintGreen.withOpacity(0.12),
+                  border: Border.all(color: mintGreen.withOpacity(0.35)),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: mintGreen,
+                  size: 22,
+                ),
+              ),
+        title: Text(
+          timeStr,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: const Padding(
+          padding: EdgeInsets.only(top: 4),
+          child: Text(
+            'AI Session',
+            style: TextStyle(color: Colors.grey, fontSize: 12),
+          ),
+        ),
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: statusColor.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: statusColor.withOpacity(0.35)),
+          ),
+          child: Text(
+            status.toUpperCase(),
+            style: TextStyle(
+              color: statusColor,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.0,
+            ),
+          ),
+        ),
+        onTap: () async {
+          final sessionId = session['id'];
+
+          final matchingRows =
+              await LocalDBService.instance.getAiResultsForSession(sessionId);
+
+          if (!context.mounted) return;
+
+          if (matchingRows.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('No AI results found for this session.'),
+              ),
+            );
+            return;
+          }
+
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ProgressReportPageAI(
+                aiSessions: matchingRows,
+                sessionId: sessionId,
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 

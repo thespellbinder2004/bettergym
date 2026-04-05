@@ -197,6 +197,8 @@ class ApiService {
     required String sessionId,
     required String exerciseName,
     required String videoPath,
+    String sessionType = 'ai',
+    String? routineId,
   }) async {
     final baseUrl = await getBaseUrl();
 
@@ -208,6 +210,11 @@ class ApiService {
     request.fields['user_id'] = userId.toString();
     request.fields['session_id'] = sessionId;
     request.fields['exercise_name'] = exerciseName;
+    request.fields['session_type'] = sessionType;
+
+    if (routineId != null && routineId.isNotEmpty) {
+      request.fields['routine_id'] = routineId;
+    }
 
     request.files.add(await http.MultipartFile.fromPath('video', videoPath));
 

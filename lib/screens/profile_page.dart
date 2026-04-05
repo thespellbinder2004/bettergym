@@ -33,13 +33,23 @@ class _ProfilePageState extends State<ProfilePage> {
       builder: (BuildContext context) {
         return AlertDialog(
           backgroundColor: darkSlate,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Confirm Logout', style: TextStyle(color: Colors.white)),
-          content: const Text('Are you sure you want to end your session?', style: TextStyle(color: Colors.grey)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text(
+            'Confirm Logout',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: const Text(
+            'Are you sure you want to end your session?',
+            style: TextStyle(color: Colors.grey),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('CANCEL', style: TextStyle(color: mintGreen)),
+              child: const Text(
+                'CANCEL',
+                style: TextStyle(color: mintGreen),
+              ),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -77,7 +87,11 @@ class _ProfilePageState extends State<ProfilePage> {
       children: [
         Text(
           value,
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color),
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
         ),
         Text(
           label,
@@ -114,8 +128,12 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  _username, // Dynamically loaded
-                  style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+                  _username,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 24),
                 Row(
@@ -123,49 +141,10 @@ class _ProfilePageState extends State<ProfilePage> {
                   children: [
                     _buildStatPill('Sessions', '34', Colors.white),
                     _buildStatPill('Avg Form', '88%', mintGreen),
-                    _buildStatPill('Risk Tier', 'Low', mintGreen),
                   ],
                 ),
               ],
             ),
-          ),
-          
-          const SizedBox(height: 24),
-          
-          // PRA Warning History
-          const Text(
-            'PREDICTIVE RISK ASSESSMENT',
-            style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(
-              color: darkSlate,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ListTile(
-              leading: const Icon(Icons.warning_amber_rounded, color: neonRed),
-              title: const Text('Knee Valgus Detected', style: TextStyle(color: Colors.white)),
-              subtitle: const Text('Last seen: 2 days ago during Squats', style: TextStyle(color: Colors.grey, fontSize: 12)),
-              trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-              onTap: () {},
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // Utility Actions
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: navyBlue,
-              foregroundColor: Colors.white,
-              side: const BorderSide(color: mintGreen),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            icon: const Icon(Icons.download),
-            label: const Text('Export Biomechanical Data (CSV)'),
-            onPressed: () {},
           ),
 
           const SizedBox(height: 24),
@@ -177,10 +156,18 @@ class _ProfilePageState extends State<ProfilePage> {
               foregroundColor: neonRed,
               side: const BorderSide(color: neonRed),
               padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             icon: const Icon(Icons.logout),
-            label: const Text('LOGOUT', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+            label: const Text(
+              'LOGOUT',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+              ),
+            ),
             onPressed: () => _confirmLogout(context),
           ),
         ],

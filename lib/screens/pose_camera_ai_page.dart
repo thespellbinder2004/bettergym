@@ -362,6 +362,7 @@ class _PoseCameraAiPageState extends State<PoseCameraAiPage>
               sessionId: _sessionId,
               exerciseName: currentExercise.name,
               videoPath: savedFile.path,
+              sessionType: 'ai',
             );
 
             debugPrint('UPLOAD SUCCESS: $result');

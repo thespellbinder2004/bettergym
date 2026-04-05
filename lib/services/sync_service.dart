@@ -87,6 +87,7 @@ class SyncService {
       debugPrint("SyncService: Pulling historical data for User $userId...");
       debugPrint(
           "SyncService: fetchHistoryEndpoint = ${ApiConstants.fetchHistoryEndpoint}");
+
       final response = await http
           .post(
             Uri.parse(ApiConstants.fetchHistoryEndpoint),
@@ -100,16 +101,20 @@ class SyncService {
 
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        if (responseData['status'] == 'success') {
-          List<dynamic> sessions = responseData['sessions'];
 
-          if (sessions.isNotEmpty) {
-            await LocalDBService.instance.saveDownloadedHistory(sessions);
-            debugPrint(
-                "SyncService: Successfully rebuilt local DB with ${sessions.length} sessions.");
-          } else {
-            debugPrint("SyncService: No historical data found on server.");
-          }
+        if (responseData['status'] == 'success') {
+          final List<dynamic> sessions = responseData['sessions'] ?? [];
+          final List<dynamic> processedVideos =
+              responseData['processed_videos'] ?? [];
+
+          await LocalDBService.instance
+              .saveDownloadedHistory(sessions, processedVideos);
+
+          debugPrint(
+            "SyncService: Successfully rebuilt local DB with "
+            "${sessions.length} sessions and ${processedVideos.length} processed videos.",
+          );
+
           return true;
         } else {
           debugPrint(

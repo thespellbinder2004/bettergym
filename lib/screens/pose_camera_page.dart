@@ -155,6 +155,7 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
         'status': 'IN_PROGRESS',
         'global_score': 0,
         'duration_seconds': 0,
+        'session_type': 'realtime',
         'sync_status': 0,
       });
 

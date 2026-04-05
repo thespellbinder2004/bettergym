@@ -21,7 +21,7 @@ class LocalDBService {
 
     return await openDatabase(
       path,
-      version: 3, // bumped from 1 to 2
+      version: 4,
       onCreate: (db, version) async {
         // Create workout_sessions too if not yet in your DB init
         await db.execute('''
@@ -67,6 +67,9 @@ class LocalDBService {
             session_id TEXT NOT NULL,
             exercise_name TEXT NOT NULL,
             result_json TEXT NOT NULL,
+            file_path TEXT,
+            file_name TEXT,
+            score INTEGER,
             model_status TEXT DEFAULT 'processing'
               CHECK(model_status IN ('processing', 'done', 'failed')),
             error_message TEXT,
@@ -101,6 +104,14 @@ class LocalDBService {
               UPDATE workout_sessions 
               SET session_type = 'ai'
             ''');
+        }
+        if (oldVersion < 4) {
+          await db.execute(
+              'ALTER TABLE processed_videos ADD COLUMN file_path TEXT');
+          await db.execute(
+              'ALTER TABLE processed_videos ADD COLUMN file_name TEXT');
+          await db
+              .execute('ALTER TABLE processed_videos ADD COLUMN score INTEGER');
         }
       },
     );
@@ -243,10 +254,19 @@ class LocalDBService {
     );
   }
 
-  Future<void> saveDownloadedHistory(List<dynamic> serverSessions) async {
+  Future<void> saveDownloadedHistory(
+    List<dynamic> serverSessions,
+    List<dynamic> processedVideos,
+  ) async {
     final db = await database;
 
     await db.transaction((txn) async {
+      // Optional but recommended: clear old pulled data first
+      await txn.delete('rep_telemetry');
+      await txn.delete('exercise_telemetry');
+      await txn.delete('processed_videos');
+      await txn.delete('workout_sessions');
+
       for (var session in serverSessions) {
         final Map<String, dynamic> sessionData = {
           'id': session['id'],
@@ -255,6 +275,7 @@ class LocalDBService {
           'status': session['status'],
           'global_score': session['global_score'],
           'duration_seconds': session['duration_seconds'],
+          'session_type': session['session_type'] ?? 'realtime',
           'sync_status': 1,
           'created_at': session['created_at'],
         };
@@ -265,7 +286,7 @@ class LocalDBService {
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
 
-        List<dynamic> exercises = session['exercises'] ?? [];
+        final List<dynamic> exercises = session['exercises'] ?? [];
         for (var ex in exercises) {
           final Map<String, dynamic> exData = {
             'id': ex['id'],
@@ -275,6 +296,7 @@ class LocalDBService {
             'bad_reps': ex['bad_reps'],
             'exercise_score': ex['exercise_score'],
           };
+
           await txn.insert(
             'exercise_telemetry',
             exData,
@@ -295,6 +317,28 @@ class LocalDBService {
             );
           }
         }
+      }
+
+      for (var item in processedVideos) {
+        final Map<String, dynamic> processedData = {
+          'id': item['id'],
+          'user_id': item['user_id'],
+          'session_id': item['session_id'],
+          'exercise_name': item['exercise_name'],
+          'result_json': item['result_json'],
+          'file_path': item['file_path'],
+          'file_name': item['file_name'],
+          'score': item['score'],
+          'model_status': item['model_status'] ?? 'processing',
+          'error_message': item['error_message'],
+          'created_at': item['created_at'],
+        };
+
+        await txn.insert(
+          'processed_videos',
+          processedData,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
       }
     });
   }
@@ -347,10 +391,21 @@ class LocalDBService {
       GROUP BY exercise_name ORDER BY avg_score DESC
     ''');
 
-    final timeline = await db.rawQuery('''
-      SELECT *, date(created_at) as session_date FROM workout_sessions 
-      WHERE status = 'COMPLETED' ORDER BY created_at DESC
-    ''');
+    final timelineRealtime = await db.rawQuery('''
+  SELECT *, date(created_at) as session_date
+  FROM workout_sessions
+  WHERE status = 'COMPLETED'
+    AND session_type = 'realtime'
+  ORDER BY created_at DESC
+''');
+
+    final timelineAi = await db.rawQuery('''
+  SELECT *, date(created_at) as session_date
+  FROM workout_sessions
+  WHERE status = 'COMPLETED'
+    AND session_type = 'ai'
+  ORDER BY created_at DESC
+''');
 
     return {
       'bento': bentoResult.first,
@@ -359,7 +414,8 @@ class LocalDBService {
       'graph_7': daily7,
       'graph_30': daily30,
       'diagnostics': diagnostics,
-      'timeline': timeline,
+      'timeline_realtime': timelineRealtime,
+      'timeline_ai': timelineAi,
     };
   }
 
@@ -425,6 +481,9 @@ class LocalDBService {
     required String sessionId,
     required String exerciseName,
     required String resultJson,
+    String? filePath,
+    String? fileName,
+    int? score,
     String modelStatus = 'processing',
     String? errorMessage,
   }) async {
@@ -434,6 +493,9 @@ class LocalDBService {
       'session_id': sessionId,
       'exercise_name': exerciseName,
       'result_json': resultJson,
+      'file_path': filePath,
+      'file_name': fileName,
+      'score': score,
       'model_status': modelStatus,
       'error_message': errorMessage,
     });
@@ -443,6 +505,9 @@ class LocalDBService {
     required int id,
     required String modelStatus,
     String? resultJson,
+    String? filePath,
+    String? fileName,
+    int? score,
     String? errorMessage,
   }) async {
     final db = await database;
@@ -452,9 +517,10 @@ class LocalDBService {
       'error_message': errorMessage,
     };
 
-    if (resultJson != null) {
-      data['result_json'] = resultJson;
-    }
+    if (resultJson != null) data['result_json'] = resultJson;
+    if (filePath != null) data['file_path'] = filePath;
+    if (fileName != null) data['file_name'] = fileName;
+    if (score != null) data['score'] = score;
 
     await db.update(
       'processed_videos',
@@ -484,5 +550,34 @@ class LocalDBService {
       whereArgs: [status],
       orderBy: 'created_at DESC',
     );
+  }
+
+  Future<Map<String, dynamic>?> getAiResultForSession(String sessionId) async {
+    final db = await database;
+
+    final result = await db.query(
+      'processed_videos',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      orderBy: 'created_at DESC',
+      limit: 1,
+    );
+
+    if (result.isEmpty) return null;
+    return result.first;
+  }
+
+  Future<List<Map<String, dynamic>>> getAiResultsForSession(
+      String sessionId) async {
+    final db = await database;
+
+    final rows = await db.query(
+      'processed_videos',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      orderBy: 'id ASC',
+    );
+
+    return rows;
   }
 }
