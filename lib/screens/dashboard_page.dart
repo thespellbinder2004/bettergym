@@ -524,9 +524,10 @@ class _DashboardPageState extends State<DashboardPage> {
               width: 80,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
+                color: darkSlate,
                 boxShadow: [
                   BoxShadow(
-                    color: ringColor.withOpacity(0.35), // The Glow Emission
+                    color: ringColor.withOpacity(0.35),
                     blurRadius: 16,
                     spreadRadius: 2,
                   )
@@ -599,30 +600,46 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
+  List<FlSpot> _padChartData(List<dynamic> rawData, int daysBack) {
+    List<FlSpot> spots = [];
+    DateTime now = DateTime.now();
+    
+    // Convert SQL data into a map for fast chronological lookups
+    Map<String, double> dataMap = {};
+    for (var row in rawData) {
+      dataMap[row['day'].toString()] = (row['avg_score'] as num).toDouble() / 100.0;
+    }
+
+    // Loop backwards through time, day by day
+    for (int i = 0; i < daysBack; i++) {
+      // Calculate the specific date for this X-axis point
+      DateTime targetDate = now.subtract(Duration(days: (daysBack - 1) - i));
+      String dateString = "${targetDate.year}-${targetDate.month.toString().padLeft(2, '0')}-${targetDate.day.toString().padLeft(2, '0')}";
+      
+      // If the user worked out, use the score. If they skipped, slam it to 0.0
+      double score = dataMap[dateString] ?? 0.0; 
+      spots.add(FlSpot(i.toDouble(), score));
+    }
+    return spots;
+  }
+
   Widget _buildSwipableGraphs() {
     List<dynamic> g7 = _data['graph_7'] ?? [];
     List<dynamic> g30 = _data['graph_30'] ?? [];
 
-    if (g7.isEmpty && g30.isEmpty) return const SizedBox.shrink();
-
+    // Removed the is.Empty check so it ALWAYS shows the graphs (even if all 0s)
     return SizedBox(
       height: 220,
       child: PageView(
         children: [
-          if (g7.isNotEmpty) _buildTrendChart("WEEKLY AVERAGE TREND", g7),
-          if (g30.isNotEmpty) _buildTrendChart("MONTHLY AVERAGE TREND", g30),
+          _buildTrendChart("WEEKLY AVERAGE TREND", _padChartData(g7, 7), 7),
+          _buildTrendChart("MONTHLY AVERAGE TREND", _padChartData(g30, 30), 30),
         ],
       ),
     );
   }
 
-  Widget _buildTrendChart(String title, List<dynamic> data) {
-    List<FlSpot> spots = data
-        .asMap()
-        .entries
-        .map((e) => FlSpot(
-            e.key.toDouble(), (e.value['avg_score'] as num).toDouble() / 100.0))
-        .toList();
+  Widget _buildTrendChart(String title, List<FlSpot> spots, int daysBack) {
     return _buildGlassCard(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -650,11 +667,13 @@ class _DashboardPageState extends State<DashboardPage> {
                         FlLine(color: Colors.white10, strokeWidth: 1)),
                 titlesData: const FlTitlesData(show: false),
                 borderData: FlBorderData(show: false),
+                minX: 0,
+                maxX: (daysBack - 1).toDouble(), // Locks the X-axis strictly to 7 or 30
                 minY: 0,
                 maxY: 1.0,
                 lineBarsData: [
                   LineChartBarData(
-                    spots: spots,
+                    spots: spots, // Using our newly padded array
                     isCurved: true,
                     color: mintGreen,
                     barWidth: 3,
