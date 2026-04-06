@@ -58,7 +58,80 @@ class ProgressReportPageAI extends StatelessWidget {
     return neonRed;
   }
 
-  // Helper Functions
+  String _normalizeClassKey(String value) {
+    return value
+        .toLowerCase()
+        .trim()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
+  }
+
+  Map<String, String>? _getBadRepFeedback(String predictedName) {
+    final key = _normalizeClassKey(predictedName);
+
+    const feedbacks = <String, Map<String, String>>{
+      'bench_dips_elbows_flared': {
+        'title': 'Bench Dips: Elbows Flared',
+        'issue':
+            'Flaring the elbows outward forces the glenohumeral (shoulder) joint into extreme internal rotation and anterior glide while under load.',
+        'risk': 'Anterior Shoulder Capsular Strain',
+        'solution':
+            'Keep your elbows tucked closely to your sides and point them straight backward behind you as you descend. Do not let them bow outward.',
+      },
+      'bicep_curls_elbows_moving': {
+        'title': 'Bicep Curls: Elbows Moving',
+        'issue':
+            'If the elbows travel forward during the concentric (lifting) phase, the anterior deltoid is taking the load off the bicep.',
+        'risk': 'Anterior Shoulder Strain',
+        'solution':
+            'Pin your elbows firmly to the sides of your ribcage. Imagine your elbow is a fixed door hinge; only your forearms should move.',
+      },
+      'lunges_body_leaning_forward': {
+        'title': 'Lunges: Body Leaning Forward',
+        'issue':
+            'Excessive forward trunk flexion shifts the center of gravity entirely onto the anterior chain (the front of the knee) instead of dispersing it through the glutes and hamstrings.',
+        'risk': 'Lumbar Strain',
+        'solution':
+            'Keep your chest proud and your shoulders pulled back. Focus on dropping your back knee straight down toward the floor, rather than pushing your weight forward over your front knee.',
+      },
+      'pushup_elbows_flared': {
+        'title': 'Push-up: Elbows Flared',
+        'issue':
+            'Performing push-ups with elbows flared at a 90-degree angle to the torso places the shoulders in maximum abduction.',
+        'risk': 'Shoulder Impingement',
+        'solution':
+            'Tuck your elbows closer to your body so your arms form a 45-degree angle rather than a 90-degree angle with your torso.',
+      },
+      'squat_body_leaning_forward': {
+        'title': 'Squat: Body Leaning Forward',
+        'issue':
+            'It strips the load away from the quadriceps and places massive shear force directly on the lumbar spine.',
+        'risk': 'Erector Spinae Strain',
+        'solution':
+            'Keep your chest up and eyes looking straight ahead. Focus on sitting your hips back and down like you are sitting in a chair, rather than folding your torso forward.',
+      },
+      'squat_legs_too_narrow': {
+        'title': 'Squat: Legs Too Narrow',
+        'issue':
+            'A stance that is too narrow drastically limits hip mobility and forces the femur to internally rotate as the user descends.',
+        'risk': 'Meniscus Tear',
+        'solution':
+            'Widen your stance so your feet are shoulder-width apart. Point your toes slightly outward to allow your hips to open up as you descend.',
+      },
+      'squat_legs_too_wide': {
+        'title': 'Squat: Legs Too Wide',
+        'issue':
+            'An excessively wide stance places extreme tension on the inner thigh musculature and alters the tracking of the hip joint.',
+        'risk': 'Hip Adductor Strain (severe groin pull)',
+        'solution':
+            'Bring your feet slightly closer together so they are just outside shoulder-width. Ensure your knees are tracking directly over your middle toes when you squat down.',
+      },
+    };
+
+    return feedbacks[key];
+  }
+
   String _buildSecureVideoUrl({
     required int userId,
     required String sessionId,
@@ -71,7 +144,6 @@ class ProgressReportPageAI extends StatelessWidget {
         "&exercise_name=${Uri.encodeComponent(exerciseName)}"
         "&auth_token=${Uri.encodeComponent(authToken)}";
   }
-  // Widgets
 
   Widget _buildMacroStat(String label, String value, Color color) {
     return Column(
@@ -102,6 +174,7 @@ class ProgressReportPageAI extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
@@ -111,12 +184,16 @@ class ProgressReportPageAI extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          Text(
-            value,
-            style: TextStyle(
-              color: valueColor ?? Colors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
+          Expanded(
+            flex: 2,
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: valueColor ?? Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ],
@@ -147,6 +224,73 @@ class ProgressReportPageAI extends StatelessWidget {
     );
   }
 
+  Widget _buildBadRepFeedbackCard(Map<String, String> feedback) {
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: neonRed.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: neonRed.withOpacity(0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            feedback['title'] ?? 'Bad Form Feedback',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            "Biomechanical Issue:",
+            style: TextStyle(
+              color: neonRed,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            feedback['issue'] ?? '-',
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            "Predictive Injury Risk:",
+            style: TextStyle(
+              color: neonRed,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            feedback['risk'] ?? '-',
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            "Solution:",
+            style: TextStyle(
+              color: mintGreen,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            feedback['solution'] ?? '-',
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRepCard(
       Map<String, dynamic> rep, String exerciseName, int fallbackIndex) {
     final repNumber = _toInt(rep['rep'], fallbackIndex + 1);
@@ -161,6 +305,7 @@ class ProgressReportPageAI extends StatelessWidget {
         rep['top_predictions'] is List ? rep['top_predictions'] as List : [];
 
     final Color accent = isGood ? mintGreen : neonRed;
+    final badRepFeedback = !isGood ? _getBadRepFeedback(predictedName) : null;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -261,6 +406,8 @@ class ProgressReportPageAI extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (badRepFeedback != null)
+                    _buildBadRepFeedbackCard(badRepFeedback),
                   if (topPredictions.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     Align(
