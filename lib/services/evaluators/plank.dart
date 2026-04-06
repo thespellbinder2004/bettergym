@@ -103,7 +103,11 @@ class PlankEvaluator extends BaseEvaluator {
       if (rawFormError.isEmpty) {
         rawFormError = "Look away from camera.";
         ttsVariations = [
-          "Turn sideways. Do not look at the camera. Focus on your form and listen for the timer."
+          "Turn sideways. Do not look at the camera. Focus on your form and listen for the timer.",
+          "For accurate feedback, please position yourself in a side profile facing away from the camera.",
+          "Please adjust your position to a side profile, looking away from the camera. This will help us provide better feedback on your form.",
+          "To ensure the best feedback, please turn to a side profile and avoid looking directly at the camera. Focus on your form and listen for the timer cues.",
+          "For optimal feedback, please position yourself in a side profile facing away from the camera. This will allow us to better analyze your form and provide accurate guidance."
         ];
       }
     } 
@@ -114,10 +118,10 @@ class PlankEvaluator extends BaseEvaluator {
       if (rawFormError.isEmpty) {
         if (isSagging) {
           rawFormError = "Hips sagging.";
-          ttsVariations = ["Hips are dropping.", "Keep your back straight.", "Tighten your core."];
+          ttsVariations = ["Hips are dropping.", "Keep your back straight.", "Tighten your core.", "Engage your abs to lift your hips.", "Don't let your hips drop. Keep your core tight."," Your hips should be in line with your shoulders and ankles.", "Imagine a straight line from your shoulders to your ankles. Keep your hips on that line."];
         } else {
           rawFormError = "Butt too high.";
-          ttsVariations = ["Lower your hips.", "Bring your hips down into a straight line."];
+          ttsVariations = ["Lower your hips.", "Bring your hips down into a straight line.", "Your hips should be in line with your shoulders and ankles. Try to lower your hips a bit.", "Imagine a straight line from your shoulders to your ankles. Keep your hips on that line.", "Don't raise your hips too high. Keep your core engaged and bring your hips down."];
         }
       }
     } 
@@ -127,7 +131,7 @@ class PlankEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle, PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle]);
       if (rawFormError.isEmpty) {
         rawFormError = "Knees bent.";
-        ttsVariations = ["Straighten your legs.", "Lock your knees out.", "Keep your legs straight."];
+        ttsVariations = ["Straighten your legs.", "Lock your knees out.", "Keep your legs straight.", "Engage your leg muscles and straighten your knees.", "Your legs should be straight. Try to lock out your knees."," Imagine trying to push the floor away with your feet. This can help you straighten your legs."];
       }
     } 
     // PRIORITY 4: Upper Arm Alignment (Replaces straight-arm rule)
@@ -136,7 +140,7 @@ class PlankEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow, PoseLandmarkType.rightHip, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow]);
       if (rawFormError.isEmpty) {
         rawFormError = "Elbows misaligned.";
-        ttsVariations = ["Stack your elbows directly under your shoulders.", "Adjust your arms.", "Elbows straight down."];
+        ttsVariations = ["Stack your elbows directly under your shoulders.", "Adjust your arms.", "Elbows straight down."," Keep your upper arms perpendicular to the floor.", "Your elbows should be directly under your shoulders. Try adjusting your arm position."];
       }
     } 
     // PRIORITY 5: Swaying (Elbow Anchors)
@@ -146,7 +150,7 @@ class PlankEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder, PoseLandmarkType.leftElbow, PoseLandmarkType.rightElbow]);
       if (rawFormError.isEmpty) {
         rawFormError = "Stop moving.";
-        ttsVariations = ["Hold still.", "Stop swaying.", "Lock your body in place."];
+        ttsVariations = ["Hold still.", "Stop swaying.", "Lock your body in place.", "Stay steady and avoid unnecessary movement.", "Your body should be still. Try to hold your position without swaying."];
       }
     } 
     // PRIORITY 6: Neck (Relaxed from 150 to 135)
@@ -155,7 +159,7 @@ class PlankEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll([PoseLandmarkType.nose, PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder]);
       if (rawFormError.isEmpty) {
         rawFormError = "Head dropping.";
-        ttsVariations = ["Don't let your head hang.", "Lift your head slightly.", "Keep your neck in line with your spine."];
+        ttsVariations = ["Don't let your head hang.", "Lift your head slightly.", "Keep your neck in line with your spine.", "Maintain a neutral neck position.", "Avoid letting your head drop forward.", "Imagine holding an apple under your chin to keep your neck aligned."];
       }
     }
 

@@ -78,7 +78,12 @@ class BenchDipEvaluator extends BaseEvaluator {
         ttsVariations = [
           "Keep your back close to the bench.", 
           "Don't let your hips drift forward.", 
-          "Slide your back down the bench."
+          "Slide your back down the bench.",
+          "Maintain contact between your back and the bench.",
+          "Avoid letting your hips move away from the bench.",
+          "Keep your body aligned with the bench.",
+          "Focus on keeping your hips in line with the bench.",
+          "Don't let your hips sag away from the bench."
         ];
       }
     }
@@ -89,8 +94,12 @@ class BenchDipEvaluator extends BaseEvaluator {
         rawFormError = "Going too deep.";
         ttsVariations = [
           "Too deep! Protect your shoulders.", 
-          "Stop at 90 degrees.", 
-          "Don't drop below your elbows."
+          "Stop at or before 90 degrees.", 
+          "Don't drop below your elbows.",
+          "Maintain a 90 degree angle at the elbows.",
+          "Avoid going too deep to protect your joints.",
+          "Keep your elbows at a right angle or above.",
+          "Focus on maintaining proper depth without going too low."
         ];
       }
     }
@@ -99,7 +108,7 @@ class BenchDipEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.leftHip, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightHip]);
       if (rawFormError.isEmpty) {
         rawFormError = "Torso leaning too far.";
-        ttsVariations = ["Keep your chest up.", "Sit up straighter."];
+        ttsVariations = ["Keep your chest up.", "Sit up straighter."," Avoid leaning forward."," Maintain an upright torso.", "Focus on keeping your chest lifted.", "Don't let your torso lean forward."];
       }
     } 
 
@@ -139,7 +148,7 @@ class BenchDipEvaluator extends BaseEvaluator {
           badRep = true; 
           repFeedback = "Too fast! Control the rep.";
           // AUDIO INJECTION NO. 1
-          audioCuePayload ??= ["Slow down.", "Control your speed."];
+          audioCuePayload ??= ["Slow down.", "Control your speed.", "Don't rush your reps.", "Focus on a controlled movement.", "Take your time with each rep.", "Maintain a steady pace throughout the rep.", "Avoid rushing to maximize effectiveness."];
         } else if (hasFormBrokenThisRep) {
           badRep = true; 
           repFeedback = "Rep invalid. Watch your form!";
@@ -162,7 +171,12 @@ class BenchDipEvaluator extends BaseEvaluator {
             audioCuePayload ??= [
               "Partial repetition. Go lower.", 
               "Not deep enough.", 
-              "Break 90 degrees."
+              "Break 90 degrees.",
+              "Aim for a right angle at the elbows.",
+              "Try to get your elbows parallel to the ground.",
+              "Focus on reaching proper depth for full reps.",
+              "Don't stop too high, go deeper for full benefits.",
+              "Make sure to lower yourself until your elbows are at least at 90 degrees."
             ];
           }
           lowestElbowAngle = 180.0; 

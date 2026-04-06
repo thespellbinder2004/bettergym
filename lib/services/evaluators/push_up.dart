@@ -66,7 +66,7 @@ class PushUpEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll(activeJoints); 
       if (rawFormError.isEmpty) {
         rawFormError = "Turn sideways.";
-        ttsVariations = ["Turn sideways. Front view is not supported.", "Please face sideways to the camera."];
+        ttsVariations = ["Turn sideways. Front view is not supported.", "Please face sideways to the camera.","Face the side for better tracking.", "Side profile only."];
       }
     } 
     else if (hipHingeAngle < 165.0) {
@@ -78,7 +78,10 @@ class PushUpEvaluator extends BaseEvaluator {
           "Keep your body in a straight line.", 
           "Tighten your core.", 
           "Straighten your back.",
-          "Lock your core tight."
+          "Lock your core tight.",
+          "Don't let your hips sag nor be raised too high.",
+          "Maintain a straight line from head to heels.",
+          "Imagine a straight line running through your body from head to heels. Keep your hips in line with your shoulders and ankles."
         ];
       }
     } 
@@ -87,7 +90,7 @@ class PushUpEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.leftKnee, PoseLandmarkType.leftAnkle, PoseLandmarkType.rightHip, PoseLandmarkType.rightKnee, PoseLandmarkType.rightAnkle]);
       if (rawFormError.isEmpty) {
         rawFormError = "Knees bent.";
-        ttsVariations = ["Knees are bent, straighten your legs.", "Keep your legs completely straight.", "Lock your knees out."];
+        ttsVariations = ["Knees are bent, straighten your legs.", "Keep your legs completely straight.", "Lock your knees out.", "Straighten your legs and squeeze your quads.", "Keep your knees aligned with your ankles."];
       }
     } 
     else if (shoulderAngle > 90.0) {
@@ -95,7 +98,7 @@ class PushUpEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.leftShoulder, PoseLandmarkType.leftElbow, PoseLandmarkType.rightHip, PoseLandmarkType.rightShoulder, PoseLandmarkType.rightElbow]);
       if (rawFormError.isEmpty) {
         rawFormError = "Hands too far forward.";
-        ttsVariations = ["Move your hands back. Stack them under your shoulders.", "Your hands are too far forward.", "Stack your wrists directly under your shoulders."];
+        ttsVariations = ["Move your hands back. Stack them under your shoulders.", "Your hands are too far forward.", "Stack your wrists directly under your shoulders.", "Keep your hands under your shoulders for better leverage.", "Your hands should be in line with your shoulders, not ahead of them.", "Adjust your hand position to be directly under your shoulders."];
       }
     }
 
@@ -133,7 +136,7 @@ class PushUpEvaluator extends BaseEvaluator {
           badRep = true; 
           repFeedback = "Too fast! Control the rep.";
           // Add the audio cue directly to the payload instead of calling hardware
-          audioCuePayload ??= ["Slow down. Don't rush.", "Control the weight. Too fast."];
+          audioCuePayload ??= ["Slow down. Don't rush.", "Control the weight. Too fast.","Focus on form, not speed.","Quality over quantity. Slow down your reps.", "Don't rush your reps. Slow and controlled movements lead to better gains.", "Take your time with each rep. Aim for a slow and controlled movement."];
         } else if (hasFormBrokenThisRep) {
           badRep = true; 
           repFeedback = "Rep invalid. Fix your form!";
@@ -156,7 +159,10 @@ class PushUpEvaluator extends BaseEvaluator {
             audioCuePayload ??= [
               "Partial repetition. Go lower next time.", 
               "Not low enough. Break 90 degrees.", 
-              "Chest to the floor."
+              "Chest to the floor.",
+              "Keep your chest close to the floor throughout the movement.",
+              "Aim to get your chest closer to the floor. Try to break 90 degrees at the elbow.",
+              "To get the most out of your push-ups, aim to lower yourself until your elbows are at least at a 90 degree angle. Try to get your chest as close to the floor as possible."
             ];
           }
           lowestElbowAngle = 180.0; 

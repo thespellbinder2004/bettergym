@@ -106,7 +106,7 @@ class SquatEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll(isFrontFacing ? [PoseLandmarkType.leftAnkle, PoseLandmarkType.rightAnkle] : [isLeftVisible ? PoseLandmarkType.leftAnkle : PoseLandmarkType.rightAnkle]);
       if (rawFormError.isEmpty) {
         rawFormError = "Foot moved.";
-        ttsVariations = ["Keep your feet planted.", "Don't step or lift your heels.", "Feet flat on the floor."];
+        ttsVariations = ["Keep your feet planted.", "Don't step or lift your heels.", "Feet flat on the floor.", "Maintain your stance.", "Don't let your foot shift."];
       }
     } 
     else if (!isFrontFacing && neckAngle < 145.0) {
@@ -114,7 +114,7 @@ class SquatEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll([PoseLandmarkType.nose, PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder]);
       if (rawFormError.isEmpty) {
         rawFormError = "Gaze dropping.";
-        ttsVariations = ["Keep your chest up and look forward.", "Don't stare at the floor."];
+        ttsVariations = ["Keep your chest up and look forward.", "Don't stare at the floor.", "Maintain a proud chest and forward gaze.", "Look ahead, not down.", "Keep your head up."];
       }
     }
 
@@ -132,14 +132,14 @@ class SquatEvaluator extends BaseEvaluator {
         rawFaultyJoints.addAll([PoseLandmarkType.leftKnee, PoseLandmarkType.rightKnee]);
         if (rawFormError.isEmpty) {
           rawFormError = "Knees caving in.";
-          ttsVariations = ["Drive your knees outward.", "Push your knees out over your toes."];
+          ttsVariations = ["Drive your knees outward.", "Push your knees out over your toes.", "Keep your knees aligned with your toes.", "Don't let your knees collapse inward.", "Maintain knee tracking over your feet."];
         }
       } else if (lateralShift > torsoLength * 0.15 && verticalDepthRatio > 0.6) {
         rawFormState = -1;
         rawFaultyJoints.addAll([PoseLandmarkType.leftHip, PoseLandmarkType.rightHip]);
         if (rawFormError.isEmpty) {
           rawFormError = "Body shifting.";
-          ttsVariations = ["Keep your weight centered.", "Don't lean to one side."];
+          ttsVariations = ["Keep your weight centered.", "Don't lean to one side.", "Maintain a neutral spine.", "Keep your hips level.", "Distribute your weight evenly."," Avoid shifting your body sideways."];
         }
       }
       
@@ -157,7 +157,7 @@ class SquatEvaluator extends BaseEvaluator {
         rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder, PoseLandmarkType.leftHip, PoseLandmarkType.rightHip]);
         if (rawFormError.isEmpty) {
           rawFormError = "Chest falling.";
-          ttsVariations = ["Keep your chest up. Don't let your torso collapse.", "Match your back angle to your shins."];
+          ttsVariations = ["Keep your chest up. Don't let your torso collapse.", "Match your back angle to your shins.", "Keep your spine in a neutral position.", "Don't let your chest drop forward.", "Maintain a proud chest and straight back."];
         }
       }
       
@@ -201,7 +201,7 @@ class SquatEvaluator extends BaseEvaluator {
           badRep = true;
           repFeedback = "Too fast! Control the rep.";
           // AUDIO INJECTION NO. 1
-          audioCuePayload ??= ["Slow down the descent.", "Don't dive-bomb the squat."];
+          audioCuePayload ??= ["Slow down the descent.", "Don't dive-bomb the squat.", "Control your tempo.", "Lower yourself with control.", "Don't rush the movement."];
         } else if (hasFormBrokenThisRep) {
           badRep = true;
           repFeedback = "Rep invalid. Watch form!";
@@ -231,7 +231,11 @@ class SquatEvaluator extends BaseEvaluator {
               audioCuePayload ??= [
                 "Partial rep. Break parallel.",
                 "Go deeper.",
-                "Drop your hips to knee level."
+                "Drop your hips to knee level.",
+                "Aim for parallel or below.",
+                "Don't cut the squat short.",
+                "Get your hips lower to complete the rep.",
+                "You can go lower than that."
               ];
             }
             _lowestKneeAngle = 180.0; 

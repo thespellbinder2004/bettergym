@@ -237,19 +237,30 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
     if (_prepTimeSetting >= 16) {
       if (isHorizontal) {
         AudioService.instance.speakPriority([
-          "Prepare for $currentExerciseName. Ensure your whole body is visible from the side. Landscape mode is highly recommended."
+          "Prepare for $currentExerciseName. Ensure your whole body is visible from the side. Landscape mode is highly recommended.",
+          "Getting ready for $currentExerciseName. Drop to the floor, face sideways, and use landscape mode.",
+          "Next up, $currentExerciseName. I need a clear side profile in landscape orientation.",
+          "Prepare for $currentExerciseName. For best results, tilt your phone to landscape."
         ]);
       } else if (isSquat) {
         AudioService.instance.speakPriority([
-          "Prepare for $currentExerciseName. You can face the camera directly, or stand sideways. Portrait mode is recommended."
+          "Prepare for $currentExerciseName. Please face the camera directly. Portrait mode is recommended.",
+          "Squats are next. Face the camera. Tilt your phone to portrait mode if its in landscape.",
+          "Up next: $currentExerciseName. For best tracking, face the camera and use portrait orientation.",
+          "Get ready for $currentExerciseName. Face the camera head on. Portrait mode works best."
         ]);
       } else if (isLunge) {
         AudioService.instance.speakPriority([
-          "Prepare for $currentExerciseName. To avoid blocking your legs from the camera, face left to lunge with your left leg, and face right to lunge with your right leg."
+          "Prepare for $currentExerciseName. To avoid blocking your legs from the camera, face to the left if lunging with your left leg, and face right to lunge with your right leg.",
+          "Getting ready for $currentExerciseName. Face the camera and choose your lunge direction to keep your legs visible. Face right if right foot goes forward, and vice versa.",
+          "Next up, $currentExerciseName. Face the camera and orient yourself based on your leading leg for best tracking.",
         ]);
       } else if (isVertical) {
         AudioService.instance.speakPriority([
-          "Prepare for $currentExerciseName. Portrait mode and a clear side profile are strictly required."
+          "Prepare for $currentExerciseName. Portrait mode and a clear side profile are strictly required.",
+          "Getting ready for $currentExerciseName. Drop to the floor and face sideways. Make sure to use portrait orientation.",
+          "Next up, $currentExerciseName. I need a clear side profile in portrait orientation.",
+          "Prepare for $currentExerciseName. For best results, tilt your phone to portrait and show a clear side view."
         ]);
       }
     }
@@ -278,11 +289,24 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
     // 16-second rule applied.
     if (_restTimeSetting >= 16) {
       AudioService.instance.speakPriority([
-        "Set complete. Rest up. We have $nextExerciseName next. Tip: $orientationTip orientation works best for tracking this."
+        "Set complete. Rest up. We have $nextExerciseName next. Tilt your phone to $orientationTip for me tp track this better.",
+        "Good set. Take a breather. $nextExerciseName is coming up. Make sure your phone is in $orientationTip mode.",
+        "Take your rest. You'll need to tilt your phone to $orientationTip for the next movement: $nextExerciseName.",
+        "Set finished. Next up is $nextExerciseName. For best results, use $orientationTip orientation for that one.",
+        "Rest time. Be ready for the next set. Flip your phone if needed, $orientationTip mode works best for $nextExerciseName."
       ]);
     } else {
       AudioService.instance.speakPriority([
-        "Set complete. Rest up."
+        "Set complete. Rest up.",
+        "Good work. Catch your breath.",
+        "Awesome job. Rest now.",
+        "Set finished.",
+        "Take a quick break.",
+        "You finished a set. Rest up.",
+        "Great work. Take a moment to rest.",
+        "Set complete! Now take a quick break.",
+        "Take a breather, I suggest you stretch out a bit before the next set.",
+        "Rest time. Be ready for the next set."
       ]);
     }
 
@@ -360,7 +384,15 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
             if (_acquisitionMissingSeconds == 4) {
               AudioService.instance.speakPriority([
                 "Please step back so your full body is visible in the frame.",
-                "I cannot see you. Please step back."
+                "I cannot see you. Please step back.",
+                "Back up a bit, you are out of frame.",
+                "Adjust your position. I need to see your whole body.",
+                "Step further away from the camera.",
+                "Your full body is not visible. Please move back a little.",
+                "I need to see your whole body. Please adjust your position.",
+                "Please adjust your position so I can see your whole body.",
+                "You are out of frame. Please step back until your whole body is visible.",
+                "I can't see you. Please move back until your whole body is visible in the frame."
               ]);
             }
           }
@@ -394,7 +426,13 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
             if (_countdownSeconds == 60) {
               AudioService.instance.speakPriority([
                 "One minute remaining.",
-                "Sixty seconds left."
+                "Sixty seconds left.",
+                "One minute to go. Keep breathing.",
+                "Just a minute left on the clock.",
+                "One minute remaining. Stay focused.",
+                "Sixty seconds remaining. You're doing great.",
+                "One minute left. Keep up the good work.",
+                "Sixty seconds to go. Almost there."
               ]);
             }
             
@@ -405,6 +443,14 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
               AudioService.instance.speakPriority([
                 "Ten seconds remaining, assume your starting position.",
                 "Ten seconds left, get ready."
+                "Almost time. Get into position.",
+                "Ten seconds. Prepare yourself.",
+                "Less than 10 seconds, be in the starting form",
+                "Ten seconds remaining. Get ready to start.",
+                "Ten seconds left. Assume your starting position.",
+                "Clock is ticking. Ten seconds to go.",
+                "Prep time is almost up. Get into position in ten seconds.",
+                "Rest time is almost up. Be ready to start in ten seconds."
               ]);
             }
 

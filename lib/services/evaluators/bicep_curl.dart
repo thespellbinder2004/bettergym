@@ -78,7 +78,7 @@ class BicepCurlEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll(activeJoints); 
       if (rawFormError.isEmpty) {
         rawFormError = "Turn sideways.";
-        ttsVariations = ["Turn sideways. Portrait mode required.", "Face the side."];
+        ttsVariations = ["Turn sideways. Portrait mode required.", "Face the side.", "Align your body perpendicular to the camera.", "Position yourself sideways to the camera.", "Rotate your body 90 degrees.", "Side profile needed for this exercise."];
       }
     }
     else if (upperArmAngle > 25.0) {
@@ -86,7 +86,7 @@ class BicepCurlEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder, PoseLandmarkType.leftElbow, PoseLandmarkType.rightElbow, PoseLandmarkType.leftHip, PoseLandmarkType.rightHip]);
       if (rawFormError.isEmpty) {
         rawFormError = "Elbows drifting.";
-        ttsVariations = ["Pin your elbows to your sides.", "Stop swinging your arms.", "Keep your upper arm still."];
+        ttsVariations = ["Pin your elbows to your sides.", "Stop swinging your arms.", "Keep your upper arm still.", "Focus on moving only your forearms.", "Don't let your elbows flare out.", "Keep your elbows tucked in."];
       }
     }
     else if (leaningBackward && leanAngle > 15.0) {
@@ -94,7 +94,7 @@ class BicepCurlEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder, PoseLandmarkType.leftHip, PoseLandmarkType.rightHip]);
       if (rawFormError.isEmpty) {
         rawFormError = "Leaning backward.";
-        ttsVariations = ["Stop swinging your back.", "Don't lean backward to cheat the weight.", "Keep your torso straight."];
+        ttsVariations = ["Stop swinging your back.", "Don't lean backward to cheat the weight.", "Keep your torso straight.", "Focus on using your arms, not your back.", "Maintain an upright posture.", "Avoid leaning back during the curl."];
       }
     }
 
@@ -140,7 +140,7 @@ class BicepCurlEvaluator extends BaseEvaluator {
           badRep = true;
           repFeedback = "Too fast! Control the eccentric.";
           // INJECTION: Store audio instructions for the UI to handle
-          audioCuePayload ??= ["Slow down on the way down.", "Don't drop the weight.", "Control the negative."];
+          audioCuePayload ??= ["Slow down on the way down.", "Don't drop the weight.", "Control the negative.", "Take 2-3 seconds to lower the weight.", "Focus on a slow descent.", "Maintain control as you lower the dumbbell.", "Avoid rushing the lowering phase for better gains.", "Eccentric control is key for muscle growth."];
         } 
         else if (hasFormBrokenThisRep) {
           badRep = true;
@@ -156,7 +156,12 @@ class BicepCurlEvaluator extends BaseEvaluator {
             audioCuePayload ??= [
               "Partial rep. Extend your arms fully.",
               "All the way down.",
-              "Full range of motion."
+              "Full range of motion.",
+              "Don't stop halfway, go all the way down.",
+              "Make sure to fully extend your arms at the bottom.",
+              "Lower the weight until your arms are straight for a complete rep.",
+              "Focus on achieving a full stretch at the bottom of the curl.",
+              "Partial reps won't maximize your gains. Go all the way down."
             ];
           }
           _highestElbowAngle = 0.0; 

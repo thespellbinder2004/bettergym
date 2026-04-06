@@ -89,7 +89,7 @@ class LungeEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll(activeJoints); 
       if (rawFormError.isEmpty) {
         rawFormError = "Turn sideways.";
-        ttsVariations = ["Turn sideways.", "Face the side, do not look at the camera."];
+        ttsVariations = ["Turn sideways.", "Face the side, do not look at the camera.", "Align your body perpendicular to the camera.", "Position yourself sideways to the camera.", "Rotate your body 90 degrees.", "Side profile needed for this exercise."];
       }
     }
     else if (frontKneeFlexion < 140.0 && stepLength < torsoLength * 0.70) {
@@ -97,7 +97,7 @@ class LungeEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll([PoseLandmarkType.leftAnkle, PoseLandmarkType.rightAnkle]);
       if (rawFormError.isEmpty) {
         rawFormError = "Step too short.";
-        ttsVariations = ["Widen your stance.", "Take a longer step.", "Your feet are too close together."];
+        ttsVariations = ["Widen your stance.", "Take a longer step.", "Your feet are too close together.", "Increase the distance between your feet.", "Don't step too short, extend your leg further."];
       }
     }
     else if (frontKneeFlexion < 130.0 && backShinLength < torsoLength * 0.35) {
@@ -106,7 +106,7 @@ class LungeEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll([PoseLandmarkType.leftKnee, PoseLandmarkType.rightKnee, PoseLandmarkType.leftAnkle, PoseLandmarkType.rightAnkle]);
       if (rawFormError.isEmpty) {
         rawFormError = "Back knee twisting.";
-        ttsVariations = ["Point your back knee straight down.", "Don't twist your back leg outward."];
+        ttsVariations = ["Point your back knee straight down.", "Don't twist your back leg outward.", "Keep your back knee in line with your foot.", "Focus on proper alignment of your back leg.", "Avoid letting your back knee flare out to the side."];
       }
     }
     else if (leaningForward && leanAngle > 25.0) {
@@ -115,7 +115,7 @@ class LungeEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder, PoseLandmarkType.leftHip, PoseLandmarkType.rightHip]);
       if (rawFormError.isEmpty) {
         rawFormError = "Leaning forward.";
-        ttsVariations = ["Chest up.", "Don't lean forward.", "Straighten your back."];
+        ttsVariations = ["Chest up.", "Don't lean forward.", "Straighten your back.", "Maintain an upright torso.", "Focus on keeping your chest lifted.", "Avoid leaning forward during the lunge."];
       }
     }
     else if (!leaningForward && leanAngle > 10.0) {
@@ -123,7 +123,7 @@ class LungeEvaluator extends BaseEvaluator {
       rawFaultyJoints.addAll([PoseLandmarkType.leftShoulder, PoseLandmarkType.rightShoulder, PoseLandmarkType.leftHip, PoseLandmarkType.rightHip]);
       if (rawFormError.isEmpty) {
         rawFormError = "Leaning backward.";
-        ttsVariations = ["Stop leaning back.", "Keep your torso vertical."];
+        ttsVariations = ["Stop leaning back.", "Keep your torso vertical."," Don't lean backward.", "Focus on keeping your torso upright.", "Maintain a neutral spine during the lunge.", "Avoid leaning back to balance."];
       }
     }
 
@@ -163,7 +163,7 @@ class LungeEvaluator extends BaseEvaluator {
           badRep = true;
           repFeedback = "Too fast! Control the descent.";
           // INJECTION: Store audio instructions for the UI
-          audioCuePayload ??= ["Slow down your lunge.", "Don't rush.", "Control the movement."];
+          audioCuePayload ??= ["Slow down your lunge.", "Don't rush.", "Control the movement."," Focus on a steady pace.", "Take your time with each rep.", "Maintain control throughout the lunge.", "Avoid rushing to maximize effectiveness.", "A controlled lunge is a safe lunge."];
         } else if (hasFormBrokenThisRep) {
           badRep = true;
           repFeedback = "Rep invalid. Watch form!";
@@ -186,7 +186,11 @@ class LungeEvaluator extends BaseEvaluator {
             audioCuePayload ??= [
               "Partial repetition. Drop your back knee lower.",
               "Go deeper on the lunge.",
-              "Back knee toward the floor."
+              "Back knee toward the floor.",
+              "Aim to get your back knee closer to the ground.",
+              "Focus on achieving a deeper lunge for full reps.",
+              "Don't stop too high, go deeper for full benefits.",
+              "Make sure to lower yourself until your back knee is close to the floor for a complete rep."
             ];
           }
           _lowestKneeAngle = 180.0; 
