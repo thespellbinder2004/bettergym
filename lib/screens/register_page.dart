@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_services.dart';
 
 class RegisterPage extends StatefulWidget {
-  const RegisterPage({super.key}); // CLEANED
+  const RegisterPage({super.key});
 
   @override
   State<RegisterPage> createState() => _RegisterPageState();
@@ -19,6 +19,52 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _isLoading = false;
   String _message = '';
 
+  final RegExp _emailRegex = RegExp(
+    r'^[\w\.-]+@[\w\.-]+\.\w+$',
+  );
+
+  Future<void> _pickBirthday() async {
+    final DateTime now = DateTime.now();
+    final DateTime initialDate = DateTime(now.year - 18, now.month, now.day);
+
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(1900),
+      lastDate: now,
+    );
+
+    if (pickedDate != null) {
+      final formattedDate = '${pickedDate.year.toString().padLeft(4, '0')}-'
+          '${pickedDate.month.toString().padLeft(2, '0')}-'
+          '${pickedDate.day.toString().padLeft(2, '0')}';
+
+      setState(() {
+        _birthdayController.text = formattedDate;
+      });
+    }
+  }
+
+  bool _isValidDate(String input) {
+    try {
+      final parts = input.split('-');
+      if (parts.length != 3) return false;
+
+      final year = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      final day = int.parse(parts[2]);
+
+      final date = DateTime(year, month, day);
+
+      return date.year == year &&
+          date.month == month &&
+          date.day == day &&
+          !date.isAfter(DateTime.now());
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _register() async {
     final username = _usernameController.text.trim();
     final password = _passwordController.text.trim();
@@ -30,6 +76,27 @@ class _RegisterPageState extends State<RegisterPage> {
     if (username.isEmpty || password.isEmpty || email.isEmpty) {
       setState(() {
         _message = 'Username, password, and email are required.';
+      });
+      return;
+    }
+
+    if (!_emailRegex.hasMatch(email)) {
+      setState(() {
+        _message = 'Please enter a valid email address.';
+      });
+      return;
+    }
+
+    if (password.length < 6) {
+      setState(() {
+        _message = 'Password must be at least 6 characters.';
+      });
+      return;
+    }
+
+    if (birthday.isNotEmpty && !_isValidDate(birthday)) {
+      setState(() {
+        _message = 'Please select a valid birthday.';
       });
       return;
     }
@@ -107,22 +174,51 @@ class _RegisterPageState extends State<RegisterPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextField(controller: _usernameController, decoration: _inputDecoration('Username')),
+                  TextField(
+                    controller: _usernameController,
+                    decoration: _inputDecoration('Username'),
+                  ),
                   const SizedBox(height: 12),
-                  TextField(controller: _passwordController, obscureText: true, decoration: _inputDecoration('Password')),
+                  TextField(
+                    controller: _passwordController,
+                    obscureText: true,
+                    decoration: _inputDecoration('Password'),
+                  ),
                   const SizedBox(height: 12),
-                  TextField(controller: _emailController, decoration: _inputDecoration('Email')),
+                  TextField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: _inputDecoration('Email'),
+                  ),
                   const SizedBox(height: 12),
-                  TextField(controller: _firstNameController, decoration: _inputDecoration('First Name')),
+                  TextField(
+                    controller: _firstNameController,
+                    decoration: _inputDecoration('First Name'),
+                  ),
                   const SizedBox(height: 12),
-                  TextField(controller: _lastNameController, decoration: _inputDecoration('Last Name')),
+                  TextField(
+                    controller: _lastNameController,
+                    decoration: _inputDecoration('Last Name'),
+                  ),
                   const SizedBox(height: 12),
-                  TextField(controller: _birthdayController, decoration: _inputDecoration('Birthday (YYYY-MM-DD)')),
+                  TextField(
+                    controller: _birthdayController,
+                    readOnly: true,
+                    onTap: _pickBirthday,
+                    decoration: _inputDecoration('Birthday').copyWith(
+                      hintText: 'YYYY-MM-DD',
+                      suffixIcon: const Icon(Icons.calendar_today),
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: _isLoading ? null : _register,
                     child: _isLoading
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Text('Sign Up'),
                   ),
                   if (_message.isNotEmpty) ...[
@@ -130,7 +226,11 @@ class _RegisterPageState extends State<RegisterPage> {
                     Text(
                       _message,
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: _message.toLowerCase().contains('successful') ? Colors.green : Colors.red),
+                      style: TextStyle(
+                        color: _message.toLowerCase().contains('success')
+                            ? Colors.green
+                            : Colors.red,
+                      ),
                     ),
                   ],
                 ],
