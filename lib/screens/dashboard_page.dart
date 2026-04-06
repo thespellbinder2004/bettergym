@@ -414,37 +414,13 @@ class _DashboardPageState extends State<DashboardPage> {
                         valueColor: _getScoreColor(
                             (lastKnown['global_score'] as num).toDouble())),
                     const Divider(color: Colors.white10),
-                    _infoRow(Icons.timer, "Workout Duration",
-                        _formatTotalTime(lastKnown['duration_seconds'])),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
-
-            // --- 5. WEEKLY VOLUME ---
-            if (weeklyVol != null &&
-                weeklyVol['active_days'] != null &&
-                weeklyVol['active_days'] > 0) ...[
-              const Text("WEEKLY PERFORMANCE",
-                  style: TextStyle(
-                      color: Colors.grey,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2)),
-              const SizedBox(height: 8),
-              _buildGlassCard(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    _infoRow(Icons.calendar_today, "Number of Days Active",
-                        "${weeklyVol['active_days']}"),
+                    // NEW: Pulling rep data from the aggregates map
+                    _infoRow(Icons.fitness_center, "Total Reps", 
+                        "${lastKnown['total_reps'] ?? 0}"),
                     const Divider(color: Colors.white10),
-                    _infoRow(Icons.timer, "Total Time Worked Out",
-                        _formatTotalTime(weeklyVol['total_time'])),
-                    const Divider(color: Colors.white10),
-                    _infoRow(Icons.fitness_center, "Total Reps",
-                        "${weeklyVol['total_reps'] ?? 0}"),
+                    _infoRow(Icons.report_problem, "Bad Reps", 
+                        "${lastKnown['bad_reps'] ?? 0}",
+                        valueColor: neonRed),
                   ],
                 ),
               ),
@@ -704,6 +680,10 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildDiagnostics() {
     final diag = List<Map<String, dynamic>>.from(_data['diagnostics'] ?? []);
     if (diag.isEmpty) return const SizedBox.shrink();
+
+    // Sort diagnostics: Highest score first
+    diag.sort((a, b) => (b['avg_score'] as num).compareTo(a['avg_score'] as num));
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -718,13 +698,13 @@ class _DashboardPageState extends State<DashboardPage> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              ...diag.take(2).map((e) => _diagRow(e)),
-              if (diag.length > 2) ...[
-                const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    child: Divider(color: Colors.white10, height: 1)),
-                ...diag.skip(diag.length - 2).map((e) => _diagRow(e)),
-              ]
+              // Best Exercise
+              _diagRow(diag.first, label: "TOP PERFORMING"),
+              const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Divider(color: Colors.white10, height: 1)),
+              // Least Exercise
+              _diagRow(diag.last, label: "NEEDS ATTENTION"),
             ],
           ),
         ),
@@ -732,32 +712,31 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _diagRow(Map<String, dynamic> e) {
-    double score = (e['avg_score'] as num).toDouble();
-    Color c = _getScoreColor(score);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        children: [
-          Text(e['exercise_name'].toString().toUpperCase(),
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12)),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-                color: c.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: c.withOpacity(0.5))),
-            child: Text("${score.toInt()}%",
-                style: TextStyle(
-                    color: c, fontWeight: FontWeight.bold, fontSize: 12)),
-          )
-        ],
-      ),
-    );
+  Widget _diagRow(Map<String, dynamic> e, {required String label}) {
+      double score = (e['avg_score'] as num).toDouble();
+      Color c = _getScoreColor(score);
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: TextStyle(color: c.withOpacity(0.7), fontSize: 9, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Text(e['exercise_name'].toString().toUpperCase(),
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14)),
+                const Spacer(),
+                Text("${score.toInt()}%",
+                    style: TextStyle(color: c, fontWeight: FontWeight.bold, fontSize: 16)),
+              ],
+            ),
+          ],
+        ),
+      );
   }
 
   Widget _buildEnduranceSection() {
