@@ -65,7 +65,7 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
 
   bool _showToast = false;
   Timer? _toastTimer;
-
+  int _acquisitionMissingSeconds = 0;
   int _exitCountdown = 4;
   Timer? _exitTimer;
 
@@ -216,12 +216,10 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
 
   void _startPrepPhase() {
     _lockOrientation();
-
     final currentExerciseName = widget.routine.isNotEmpty
         ? widget.routine[_currentExerciseIndex].name
         : "the exercise";
     final nameLower = currentExerciseName.toLowerCase();
-
     final isHorizontal =
         nameLower.contains("push") || nameLower.contains("plank");
     final isSquat = nameLower.contains("squat");
@@ -235,22 +233,23 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
 
     _triggerToast("Get Ready.", 0);
 
-    if (_prepTimeSetting >= 20) {
+    // REFACTORED: 16-second rule applied.
+    if (_prepTimeSetting >= 16) {
       if (isHorizontal) {
         AudioService.instance.speakPriority([
-          "Prepare for $currentExerciseName. Ensure your whole body is visible from the side. Landscape mode is highly recommended.",
+          "Prepare for $currentExerciseName. Ensure your whole body is visible from the side. Landscape mode is highly recommended."
         ]);
       } else if (isSquat) {
         AudioService.instance.speakPriority([
-          "Prepare for $currentExerciseName. You can face the camera directly, or stand sideways. Portrait mode is recommended.",
+          "Prepare for $currentExerciseName. You can face the camera directly, or stand sideways. Portrait mode is recommended."
         ]);
       } else if (isLunge) {
         AudioService.instance.speakPriority([
-          "Prepare for $currentExerciseName. To avoid blocking your legs from the camera, face left to lunge with your left leg, and face right to lunge with your right leg.",
+          "Prepare for $currentExerciseName. To avoid blocking your legs from the camera, face left to lunge with your left leg, and face right to lunge with your right leg."
         ]);
       } else if (isVertical) {
         AudioService.instance.speakPriority([
-          "Prepare for $currentExerciseName. Portrait mode and a clear side profile are strictly required.",
+          "Prepare for $currentExerciseName. Portrait mode and a clear side profile are strictly required."
         ]);
       }
     }
@@ -269,16 +268,23 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
 
     final nextExerciseName = widget.routine[_currentExerciseIndex].name;
     final nameLower = nextExerciseName.toLowerCase();
-
+    
     final isHorizontal =
         nameLower.contains("push") || nameLower.contains("plank");
     final orientationTip = isHorizontal ? "landscape" : "portrait";
 
     _triggerToast("Rest. Next: $nextExerciseName", 0);
 
-    AudioService.instance.speakPriority([
-      "Set complete. Rest up. We have $nextExerciseName next. Tip: $orientationTip orientation works best for tracking this.",
-    ]);
+    // 16-second rule applied.
+    if (_restTimeSetting >= 16) {
+      AudioService.instance.speakPriority([
+        "Set complete. Rest up. We have $nextExerciseName next. Tip: $orientationTip orientation works best for tracking this."
+      ]);
+    } else {
+      AudioService.instance.speakPriority([
+        "Set complete. Rest up."
+      ]);
+    }
 
     _runCountdown(() => _startActivePhase());
   }
@@ -335,12 +341,12 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
         return;
       }
 
-      // READ DATA SYNCHRONOUSLY FROM RIVERPOD FOR THE TIMER LOGIC
       final frameData = ref.read(frameProvider);
 
       setState(() {
         if (_currentPhase == SessionPhase.acquisition) {
           if (frameData.isUserInFrame) {
+            _acquisitionMissingSeconds = 0; // Reset missing timer
             _countdownSeconds--;
             if (_countdownSeconds <= 0) {
               timer.cancel();
@@ -348,6 +354,15 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
             }
           } else {
             _countdownSeconds = 5;
+            _acquisitionMissingSeconds++;
+            
+            // REFACTORED: Trigger audio if they've been missing for 4 seconds
+            if (_acquisitionMissingSeconds == 4) {
+              AudioService.instance.speakPriority([
+                "Please step back so your full body is visible in the frame.",
+                "I cannot see you. Please step back."
+              ]);
+            }
           }
           return;
         }
@@ -356,17 +371,14 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
             widget.routine[_currentExerciseIndex].isDuration) {
           if (frameData.formState != -1) {
             _repsOrSecondsRemaining--;
-
-            _sessionTelemetry[_currentExerciseIndex]
-                .repScores
-                .add(frameData.formScore);
+            _sessionTelemetry[_currentExerciseIndex].repScores.add(frameData.formScore);
             _sessionTelemetry[_currentExerciseIndex].goodReps++;
 
             AudioService.instance.playTick();
 
             if (_repsOrSecondsRemaining <= 0) {
               timer.cancel();
-              AudioService.instance.playChime();
+              AudioService.instance.playChime(); // Accomplishment chime
               _completeExercise();
             }
           } else {
@@ -375,9 +387,28 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
           }
         } else {
           _countdownSeconds--;
+          
+          if ((_currentPhase == SessionPhase.prep || _currentPhase == SessionPhase.rest)) {
+            
+            // REFACTORED: 1-minute warning
+            if (_countdownSeconds == 60) {
+              AudioService.instance.speakPriority([
+                "One minute remaining.",
+                "Sixty seconds left."
+              ]);
+            }
+            
+            // REFACTORED: 10-second warning (only if original time was >= 15s)
+            if (_countdownSeconds == 10 && 
+               ((_currentPhase == SessionPhase.prep && _prepTimeSetting >= 15) || 
+                (_currentPhase == SessionPhase.rest && _restTimeSetting >= 15))) {
+              AudioService.instance.speakPriority([
+                "Ten seconds remaining, assume your starting position.",
+                "Ten seconds left, get ready."
+              ]);
+            }
 
-          if ((_currentPhase == SessionPhase.prep ||
-              _currentPhase == SessionPhase.rest)) {
+            // Beeps at the end
             if (_countdownSeconds <= 3 && _countdownSeconds > 0) {
               AudioService.instance.playLeadInBeep();
             } else if (_countdownSeconds == 0) {
@@ -393,7 +424,7 @@ class _PoseCameraPageState extends ConsumerState<PoseCameraPage>
       });
     });
   }
-
+  
   void _triggerToast(String message, int state) {
     _toastTimer?.cancel();
     if (!mounted) return;
