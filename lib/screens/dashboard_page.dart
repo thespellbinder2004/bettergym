@@ -155,9 +155,16 @@ class _DashboardPageState extends State<DashboardPage> {
           .getRawTelemetryForPeriod(_enduranceLookback);
 
       _processEndurance(rawEndurance);
-      _processWeeklyConsistency(
-        List<Map<String, dynamic>>.from(aggregates['timeline_realtime'] ?? []),
-      );
+      final realtimeTimeline = List<Map<String, dynamic>>.from(
+          aggregates['timeline_realtime'] ?? []);
+
+      final aiTimeline =
+          List<Map<String, dynamic>>.from(aggregates['timeline_ai'] ?? []);
+
+      _processWeeklyConsistency([
+        ...realtimeTimeline,
+        ...aiTimeline,
+      ]);
 
       if (mounted) {
         setState(() {
@@ -195,19 +202,21 @@ class _DashboardPageState extends State<DashboardPage> {
 
   void _processEndurance(List<Map<String, dynamic>> telemetry) {
     Map<String, List<double>> trends = {};
-    
+
     for (var row in telemetry) {
       try {
         String exName = row['exercise_name'];
         List<double> scores = [];
-        
+
         // Handle both JSON string and raw Lists depending on how the DB fed it
         if (row['rep_scores_array'] is String) {
-          scores = List<double>.from(jsonDecode(row['rep_scores_array']).map((e) => (e as num).toDouble()));
+          scores = List<double>.from(jsonDecode(row['rep_scores_array'])
+              .map((e) => (e as num).toDouble()));
         } else if (row['rep_scores_array'] is List) {
-          scores = List<double>.from(row['rep_scores_array'].map((e) => (e as num).toDouble()));
+          scores = List<double>.from(
+              row['rep_scores_array'].map((e) => (e as num).toDouble()));
         }
-        
+
         double avgScore = 0.0;
         if (scores.isNotEmpty) {
           avgScore = scores.reduce((a, b) => a + b) / scores.length;
@@ -218,7 +227,7 @@ class _DashboardPageState extends State<DashboardPage> {
           int total = good + bad;
           if (total > 0) avgScore = good / total;
         }
-        
+
         trends.putIfAbsent(exName, () => []).add(avgScore);
       } catch (e) {
         debugPrint("Trend Processing Error: $e");
@@ -228,7 +237,9 @@ class _DashboardPageState extends State<DashboardPage> {
     setState(() {
       _fatigueCurves = trends;
       // Auto-select the first exercise in the dropdown if one isn't selected
-      if (_fatigueCurves.isNotEmpty && (_selectedFatigueExercise == null || !_fatigueCurves.containsKey(_selectedFatigueExercise))) {
+      if (_fatigueCurves.isNotEmpty &&
+          (_selectedFatigueExercise == null ||
+              !_fatigueCurves.containsKey(_selectedFatigueExercise))) {
         _selectedFatigueExercise = _fatigueCurves.keys.first;
       }
     });
@@ -413,14 +424,6 @@ class _DashboardPageState extends State<DashboardPage> {
                         "${lastKnown['global_score']}%",
                         valueColor: _getScoreColor(
                             (lastKnown['global_score'] as num).toDouble())),
-                    const Divider(color: Colors.white10),
-                    // NEW: Pulling rep data from the aggregates map
-                    _infoRow(Icons.fitness_center, "Total Reps", 
-                        "${lastKnown['total_reps'] ?? 0}"),
-                    const Divider(color: Colors.white10),
-                    _infoRow(Icons.report_problem, "Bad Reps", 
-                        "${lastKnown['bad_reps'] ?? 0}",
-                        valueColor: neonRed),
                   ],
                 ),
               ),
@@ -499,16 +502,15 @@ class _DashboardPageState extends State<DashboardPage> {
               height: 80,
               width: 80,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: darkSlate,
-                boxShadow: [
-                  BoxShadow(
-                    color: ringColor.withOpacity(0.35),
-                    blurRadius: 16,
-                    spreadRadius: 2,
-                  )
-                ]
-              ),
+                  shape: BoxShape.circle,
+                  color: darkSlate,
+                  boxShadow: [
+                    BoxShadow(
+                      color: ringColor.withOpacity(0.35),
+                      blurRadius: 16,
+                      spreadRadius: 2,
+                    )
+                  ]),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -579,21 +581,23 @@ class _DashboardPageState extends State<DashboardPage> {
   List<FlSpot> _padChartData(List<dynamic> rawData, int daysBack) {
     List<FlSpot> spots = [];
     DateTime now = DateTime.now();
-    
+
     // Convert SQL data into a map for fast chronological lookups
     Map<String, double> dataMap = {};
     for (var row in rawData) {
-      dataMap[row['day'].toString()] = (row['avg_score'] as num).toDouble() / 100.0;
+      dataMap[row['day'].toString()] =
+          (row['avg_score'] as num).toDouble() / 100.0;
     }
 
     // Loop backwards through time, day by day
     for (int i = 0; i < daysBack; i++) {
       // Calculate the specific date for this X-axis point
       DateTime targetDate = now.subtract(Duration(days: (daysBack - 1) - i));
-      String dateString = "${targetDate.year}-${targetDate.month.toString().padLeft(2, '0')}-${targetDate.day.toString().padLeft(2, '0')}";
-      
+      String dateString =
+          "${targetDate.year}-${targetDate.month.toString().padLeft(2, '0')}-${targetDate.day.toString().padLeft(2, '0')}";
+
       // If the user worked out, use the score. If they skipped, slam it to 0.0
-      double score = dataMap[dateString] ?? 0.0; 
+      double score = dataMap[dateString] ?? 0.0;
       spots.add(FlSpot(i.toDouble(), score));
     }
     return spots;
@@ -644,7 +648,8 @@ class _DashboardPageState extends State<DashboardPage> {
                 titlesData: const FlTitlesData(show: false),
                 borderData: FlBorderData(show: false),
                 minX: 0,
-                maxX: (daysBack - 1).toDouble(), // Locks the X-axis strictly to 7 or 30
+                maxX: (daysBack - 1)
+                    .toDouble(), // Locks the X-axis strictly to 7 or 30
                 minY: 0,
                 maxY: 1.0,
                 lineBarsData: [
@@ -682,7 +687,8 @@ class _DashboardPageState extends State<DashboardPage> {
     if (diag.isEmpty) return const SizedBox.shrink();
 
     // Sort diagnostics: Highest score first
-    diag.sort((a, b) => (b['avg_score'] as num).compareTo(a['avg_score'] as num));
+    diag.sort(
+        (a, b) => (b['avg_score'] as num).compareTo(a['avg_score'] as num));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -713,30 +719,35 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Widget _diagRow(Map<String, dynamic> e, {required String label}) {
-      double score = (e['avg_score'] as num).toDouble();
-      Color c = _getScoreColor(score);
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: TextStyle(color: c.withOpacity(0.7), fontSize: 9, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Text(e['exercise_name'].toString().toUpperCase(),
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14)),
-                const Spacer(),
-                Text("${score.toInt()}%",
-                    style: TextStyle(color: c, fontWeight: FontWeight.bold, fontSize: 16)),
-              ],
-            ),
-          ],
-        ),
-      );
+    double score = (e['avg_score'] as num).toDouble();
+    Color c = _getScoreColor(score);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(
+                  color: c.withOpacity(0.7),
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Text(e['exercise_name'].toString().toUpperCase(),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14)),
+              const Spacer(),
+              Text("${score.toInt()}%",
+                  style: TextStyle(
+                      color: c, fontWeight: FontWeight.bold, fontSize: 16)),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildEnduranceSection() {
@@ -1024,27 +1035,34 @@ class _DashboardPageState extends State<DashboardPage> {
         onTap: () async {
           // 1. Fetch historical raw data AND the missing rep data
           final db = await LocalDBService.instance.database;
-          final rawTelemetry = await db.query('exercise_telemetry', where: 'session_id = ?', whereArgs: [session['id']]);
+          final rawTelemetry = await db.query('exercise_telemetry',
+              where: 'session_id = ?', whereArgs: [session['id']]);
 
           List<ExerciseTelemetry> historicalData = [];
-          
+
           for (var row in rawTelemetry) {
             // Fetch the reps that belong to this specific exercise
-            final repRows = await db.query('rep_telemetry', where: 'exercise_telemetry_id = ?', whereArgs: [row['id']], orderBy: 'rep_number ASC');
-            List<double> scores = repRows.map((r) => (r['score'] as num).toDouble()).toList();
-            
-            bool isTimeBased = row['exercise_name'].toString().toLowerCase().contains('plank');
-            
+            final repRows = await db.query('rep_telemetry',
+                where: 'exercise_telemetry_id = ?',
+                whereArgs: [row['id']],
+                orderBy: 'rep_number ASC');
+            List<double> scores =
+                repRows.map((r) => (r['score'] as num).toDouble()).toList();
+
+            bool isTimeBased =
+                row['exercise_name'].toString().toLowerCase().contains('plank');
+
             ExerciseTelemetry ex = ExerciseTelemetry(
               name: row['exercise_name'].toString(),
-              target: ((row['good_reps'] as num?)?.toInt() ?? 0) + ((row['bad_reps'] as num?)?.toInt() ?? 0),
+              target: ((row['good_reps'] as num?)?.toInt() ?? 0) +
+                  ((row['bad_reps'] as num?)?.toInt() ?? 0),
               isDuration: isTimeBased,
             );
-            
+
             ex.goodReps = (row['good_reps'] as num?)?.toInt() ?? 0;
             ex.badReps = (row['bad_reps'] as num?)?.toInt() ?? 0;
             ex.repScores = scores; // Inject the missing scores!
-            
+
             historicalData.add(ex);
           }
 
