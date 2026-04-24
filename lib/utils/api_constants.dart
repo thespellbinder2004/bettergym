@@ -1,6 +1,6 @@
 class ApiConstants {
   // FLIP THIS TO TRUE WHEN DEPLOYING TO BETTERGYM.ONLINE
-  static const bool kIsProduction = false;
+  static const bool kIsProduction = true;
 
   // --- LOCAL XAMPP TESTING ---
   static const String _localBaseUrl = "http://192.168.1.5";
